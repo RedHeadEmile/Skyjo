@@ -4,7 +4,7 @@ import {lastValueFrom} from "rxjs";
 
 type Settings = {
   apiBaseUrl: string;
-  uiBaseUrl: string;
+  wsUrl: string;
 };
 
 @Injectable({

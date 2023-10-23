@@ -71,12 +71,15 @@ public class SkyjoService implements ISkyjoService {
         while (existingRoom != null);
 
         SkyjoPlayerBusinessModel me = getCurrentPlayer();
+        removeCurrentPlayerFromRoom();
 
         SkyjoRoomDataModel newRoom = new SkyjoRoomDataModel();
         newRoom.setId(uuid);
         newRoom.setSecretCode(secretCode);
         newRoom.setDisplayName("My room");
         newRoom.getPlayers().add(skyjoRepository.readPlayer(me.getId()));
+
+        skyjoRepository.createRoom(newRoom);
 
         return SkyjoRoomBusinessModel.fromDataModel(newRoom);
     }
@@ -161,6 +164,8 @@ public class SkyjoService implements ISkyjoService {
             SkyjoPlayerBusinessModel businessModel = SkyjoPlayerBusinessModel.fromDataModel(dataModel);
             this.isInitialized = true;
             this.currentPlayer = businessModel;
+
+            return this.currentPlayer;
         }
         catch (IllegalArgumentException ignored) { }
 
@@ -172,22 +177,26 @@ public class SkyjoService implements ISkyjoService {
         SkyjoPlayerBusinessModel me = getCurrentPlayer();
         me.setDisplayName(displayName);
 
+        skyjoRepository.updatePlayer(me.toDataModel());
+
         SkyjoRoomDataModel room = skyjoRepository.readPlayerRoom(me.getId());
         if (room != null)
-            simpMessagingTemplate.convertAndSend("/topic/game/" + room.getId(), new PlayerDisplayNameChangedWebsocketModel(me.getId(), displayName));
+            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new PlayerDisplayNameChangedWebsocketModel(me.getId(), displayName));
 
         return me;
     }
 
     @Override
     public SkyjoRoomBusinessModel addCurrentPlayerToRoom(String roomSecretCode) {
+        this.removeCurrentPlayerFromRoom();
+
         SkyjoRoomDataModel room = skyjoRepository.readRoom(roomSecretCode);
         if (room == null)
             throw new IllegalStateException("Room doesn't exists");
 
         SkyjoPlayerBusinessModel me = getCurrentPlayer();
         room.getPlayers().add(skyjoRepository.readPlayer(me.getId()));
-        simpMessagingTemplate.convertAndSend("/topic/game/" + room.getId(), new PlayerJoinedWebsocketModel(me.getId(), me.getDisplayName()));
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new PlayerJoinedWebsocketModel(me.getId(), me.getDisplayName()));
 
         return SkyjoRoomBusinessModel.fromDataModel(room);
     }
@@ -201,6 +210,6 @@ public class SkyjoService implements ISkyjoService {
             return;
 
         room.getPlayers().removeIf(p -> p.getId().equals(me.getId()));
-        simpMessagingTemplate.convertAndSend("/topic/game/" + room.getId(), new PlayerLeaveWebsocketModel(me.getId()));
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new PlayerLeaveWebsocketModel(me.getId()));
     }
 }

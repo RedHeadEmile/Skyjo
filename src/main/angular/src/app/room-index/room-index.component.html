@@ -1,0 +1,12 @@
+<ng-container *ngIf="rooms.length === 0">
+  <span style="font-style: italic">Aucun salon pour le moment</span>
+</ng-container>
+<div class="room-table">
+  <div *ngFor="let room of rooms" class="room">
+    <span>{{ room.displayName }}</span>
+    <button (click)="joinRoom(room)">Rejoindre</button>
+  </div>
+</div>
+<div class="create-room">
+  <button (click)="createRoom()">Créer un nouveau salon</button>
+</div>

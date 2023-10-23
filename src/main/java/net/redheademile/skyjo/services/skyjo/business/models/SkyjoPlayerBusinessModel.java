@@ -18,4 +18,11 @@ public class SkyjoPlayerBusinessModel {
             setDisplayName(dataModel.getDisplayName());
         }};
     }
+
+    public SkyjoPlayerDataModel toDataModel() {
+        return new SkyjoPlayerDataModel() {{
+            setId(SkyjoPlayerBusinessModel.this.id);
+            setDisplayName(SkyjoPlayerBusinessModel.this.displayName);
+        }};
+    }
 }

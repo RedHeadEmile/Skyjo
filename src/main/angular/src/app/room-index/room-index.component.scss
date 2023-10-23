@@ -1,0 +1,22 @@
+:host {
+  display: flex;
+  flex-direction: column;
+
+  width: 100%;
+}
+
+.room-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.room {
+
+}
+
+.create-room {
+  display: flex;
+  justify-content: center;
+
+  margin-top: auto;
+}
