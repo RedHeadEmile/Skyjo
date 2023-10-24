@@ -3,15 +3,13 @@ package net.redheademile.skyjo.services.skyjo;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import net.redheademile.skyjo.services.skyjo.business.models.ESkyjoRoomStatusBusinessModel;
-import net.redheademile.skyjo.services.skyjo.business.models.SkyjoPlayerBusinessModel;
-import net.redheademile.skyjo.services.skyjo.business.models.SkyjoRoomBusinessModel;
-import net.redheademile.skyjo.services.skyjo.business.models.SkyjoRoomMemberBusinessModel;
+import net.redheademile.skyjo.services.skyjo.business.models.*;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoPlayerDataModel;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomDataModel;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomMemberDataModel;
 import net.redheademile.skyjo.services.skyjo.repositories.ISkyjoRepository;
 import net.redheademile.skyjo.services.skyjo.websocket.models.*;
+import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,9 +86,7 @@ public class SkyjoService implements ISkyjoService {
         newRoom.setId(uuid);
         newRoom.setSecretCode(secretCode);
         newRoom.setDisplayName(displayName);
-
-        newRoom.setCurrentTurn(0);
-        newRoom.setCurrentPlayerTurnIndex(0);
+        newRoom.setStatus(ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS);
 
         skyjoRepository.createRoom(newRoom.toDataModel());
         //#endregion
@@ -112,6 +108,15 @@ public class SkyjoService implements ISkyjoService {
         return newRoom;
     }
 
+    private void fillRoom(SkyjoRoomBusinessModel room) {
+        room.setMembers(map(skyjoRepository.readRoomMembers(room.getId()), memberDataModel -> {
+            SkyjoRoomMemberBusinessModel member = SkyjoRoomMemberBusinessModel.fromDataModel(memberDataModel);
+            member.setRoom(room);
+            member.setPlayer(SkyjoPlayerBusinessModel.fromDataModel(skyjoRepository.readPlayer(memberDataModel.getPlayerId())));
+            return member;
+        }));
+    }
+
     @Override
     public SkyjoRoomBusinessModel getRoom(UUID roomId) {
         SkyjoRoomDataModel dataModel = skyjoRepository.readRoom(roomId);
@@ -119,12 +124,7 @@ public class SkyjoService implements ISkyjoService {
             return null;
 
         SkyjoRoomBusinessModel room = SkyjoRoomBusinessModel.fromDataModel(dataModel);
-        room.setMembers(map(skyjoRepository.readRoomMembers(roomId), memberDataModel -> {
-            SkyjoRoomMemberBusinessModel member = SkyjoRoomMemberBusinessModel.fromDataModel(memberDataModel);
-            member.setRoom(room);
-            member.setPlayer(SkyjoPlayerBusinessModel.fromDataModel(skyjoRepository.readPlayer(memberDataModel.getPlayerId())));
-            return member;
-        }));
+        fillRoom(room);
 
         return room;
     }
@@ -135,12 +135,19 @@ public class SkyjoService implements ISkyjoService {
         if (dataModel == null)
             return null;
 
-        return SkyjoRoomBusinessModel.fromDataModel(dataModel);
+        SkyjoRoomBusinessModel room = SkyjoRoomBusinessModel.fromDataModel(dataModel);
+        fillRoom(room);
+
+        return room;
     }
 
     @Override
     public List<SkyjoRoomBusinessModel> getRooms() {
-        return map(skyjoRepository.readRooms(), SkyjoRoomBusinessModel::fromDataModel);
+        return map(skyjoRepository.readRooms(), roomDataModel -> {
+            SkyjoRoomBusinessModel room = SkyjoRoomBusinessModel.fromDataModel(roomDataModel);
+            fillRoom(room);
+            return room;
+        });
     }
     //#endregion
 
@@ -256,6 +263,12 @@ public class SkyjoService implements ISkyjoService {
         skyjoRepository.deleteRoomMember(member.getRoomId(), member.getPlayerId());
         simpMessagingTemplate.convertAndSend("/topic/rooms/" + member.getRoomId(), new PlayerLeaveWebsocketModel(me.getId()));
     }
+
+    @Override
+    public void currentPlayerExecute(GameActionBusinessModel action) {
+        throw new NotImplementedException();
+    }
+
     //#endregion
 
     //#region GameEngine

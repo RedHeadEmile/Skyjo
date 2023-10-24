@@ -9,12 +9,14 @@ import {SettingsService} from "../services/settings.service";
 import {API_BASE_URL} from "../services/api.service";
 import {HttpClientModule} from "@angular/common/http";
 import {FormsModule} from "@angular/forms";
+import { SkyjoBoardComponent } from './skyjo-board/skyjo-board.component';
 
 @NgModule({
   declarations: [
     AppComponent,
     RoomIndexComponent,
-    RoomShowComponent
+    RoomShowComponent,
+    SkyjoBoardComponent
   ],
   imports: [
     BrowserModule,

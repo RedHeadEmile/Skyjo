@@ -7,7 +7,6 @@ import {
 } from "../../services/api.service";
 import {lastValueFrom} from "rxjs";
 import {Router} from "@angular/router";
-import {RoomStateService} from "../../services/room-state.service";
 
 @Component({
   selector: 'app-room-index',
@@ -19,8 +18,7 @@ export class RoomIndexComponent implements OnInit {
 
   constructor(
     private readonly _apiService: ApiService,
-    private readonly _router: Router,
-    private readonly _roomStateService: RoomStateService
+    private readonly _router: Router
   ) {
   }
 

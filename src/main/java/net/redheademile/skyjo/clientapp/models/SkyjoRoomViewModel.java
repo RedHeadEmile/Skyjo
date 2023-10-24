@@ -25,14 +25,41 @@ public class SkyjoRoomViewModel {
     private String secretCode;
 
     @NotNull
-    private List<SkyjoPlayerViewModel> players = new ArrayList<>();
+    private int currentTurn;
+    private UUID currentTurnPlayerId;
+    @NotNull
+    private long currentTurnPlayerEndAt;
+
+    @NotNull
+    private long gameBeginAt;
+    @NotNull
+    private ESkyjoRoomStatusViewModel status;
+
+    @NotNull
+    private List<Integer> pristineCards;
+    @NotNull
+    private List<Integer> discardedCards;
+
+    @NotNull
+    private List<SkyjoRoomMemberViewModel> members;
 
     public static SkyjoRoomViewModel fromBusinessModel(SkyjoRoomBusinessModel businessModel) {
         return new SkyjoRoomViewModel() {{
             setId(businessModel.getId());
             setDisplayName(businessModel.getDisplayName());
             setSecretCode(businessModel.getSecretCode());
-            setPlayers(map(businessModel.getPlayers(), SkyjoPlayerViewModel::fromBusinessModel));
+
+            setCurrentTurn(businessModel.getCurrentTurn());
+            setCurrentTurnPlayerId(businessModel.getCurrentTurnPlayerId());
+            setCurrentTurnPlayerEndAt(businessModel.getCurrentTurnPlayerEndAt());
+
+            setGameBeginAt(businessModel.getGameBeginAt());
+            setStatus(ESkyjoRoomStatusViewModel.fromBusinessModel(businessModel.getStatus()));
+
+            setPristineCards(businessModel.getPristineCards());
+            setDiscardedCards(businessModel.getDiscardedCards());
+
+            setMembers(map(businessModel.getMembers(), SkyjoRoomMemberViewModel::fromBusinessModel));
         }};
     }
 }

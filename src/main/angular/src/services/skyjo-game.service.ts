@@ -6,7 +6,7 @@ import {WebsocketService} from "./websocket.service";
 @Injectable({
   providedIn: 'root'
 })
-export class RoomStateService {
+export class SkyjoGameService {
 
   private _currentRoom?: SkyjoRoomViewModel;
 

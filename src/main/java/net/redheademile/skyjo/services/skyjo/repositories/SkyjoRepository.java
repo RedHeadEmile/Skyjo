@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.web.context.annotation.RequestScope;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -72,7 +73,10 @@ public class SkyjoRepository implements ISkyjoRepository {
             existingRoom.setSecretCode(room.getSecretCode());
 
             existingRoom.setCurrentTurn(room.getCurrentTurn());
-            existingRoom.setCurrentPlayerTurnIndex(room.getCurrentPlayerTurnIndex());
+            existingRoom.setCurrentTurnPlayerId(room.getCurrentTurnPlayerId());
+            existingRoom.setCurrentTurnPlayerEndAt(room.getCurrentTurnPlayerEndAt());
+
+            existingRoom.setGameBeginAt(room.getGameBeginAt());
             existingRoom.setStatus(room.getStatus());
 
             existingRoom.setPristineCards(new ArrayList<>(room.getPristineCards()));
@@ -185,7 +189,7 @@ public class SkyjoRepository implements ISkyjoRepository {
                 throw new IllegalStateException("This room member doesn't exists");
 
             existingMember.setRealBoard(new ArrayList<>(roomMember.getRealBoard()));
-            existingMember.setShownBoard(new ArrayList<>(roomMember.getShownBoard()));
+            existingMember.setShownBoard(Arrays.copyOf(roomMember.getShownBoard(), roomMember.getShownBoard().length));
 
             existingMember.setScores(new ArrayList<>(roomMember.getScores()));
 

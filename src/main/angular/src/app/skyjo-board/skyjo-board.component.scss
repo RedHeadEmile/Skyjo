@@ -1,0 +1,18 @@
+:host {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 1em;
+}
+
+.card {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  cursor: not-allowed;
+
+  &.can-be-clicked {
+    cursor: pointer;
+  }
+}
