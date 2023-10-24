@@ -29,7 +29,7 @@ export class RoomIndexComponent implements OnInit {
   }
 
   async joinRoom(room: SkyjoRoomViewModel): Promise<void> {
-    this._apiService.updateCurrentPlayerRoom(new SkyjoCurrentPlayerRoomUpdateRequestViewModel({ roomSecretCode: room.secretCode }))
+    await lastValueFrom(this._apiService.updateCurrentPlayerRoom(new SkyjoCurrentPlayerRoomUpdateRequestViewModel({ roomSecretCode: room.secretCode })));
     await this._router.navigate(['/rooms', room.secretCode]);
   }
 

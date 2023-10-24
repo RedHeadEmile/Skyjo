@@ -1,5 +1,6 @@
 import {Component, OnInit} from '@angular/core';
 import {UserService} from "../services/user.service";
+import {WebsocketService} from "../services/websocket.service";
 
 @Component({
   selector: 'app-root',
@@ -11,12 +12,14 @@ export class AppComponent implements OnInit {
   username: string = '';
 
   constructor(
-    private readonly _userService: UserService
+    private readonly _userService: UserService,
+    private readonly _websocketService: WebsocketService
   ) {
   }
 
   async ngOnInit(): Promise<void> {
     this.username = (await this._userService.refreshUser()).displayName;
+    await this._websocketService.init();
   }
 
   async onUsernameBlur(): Promise<void> {
