@@ -19,11 +19,13 @@ public class SkyjoRoomBusinessModel {
     private int currentTurn;
     private UUID currentTurnPlayerId;
     private long currentTurnPlayerEndAt;
+    private ESkyjoGameActionTypeBusinessModel lastAction;
 
     private long gameBeginAt;
     private ESkyjoRoomStatusBusinessModel status;
 
     private List<Integer> pristineCards = new ArrayList<>(150);
+    private Integer currentDrawnCard;
     private Integer lastDiscardedCard;
 
     private List<SkyjoRoomMemberBusinessModel> members = new ArrayList<>();
@@ -38,11 +40,13 @@ public class SkyjoRoomBusinessModel {
             setCurrentTurn(SkyjoRoomBusinessModel.this.getCurrentTurn());
             setCurrentTurnPlayerId(SkyjoRoomBusinessModel.this.getCurrentTurnPlayerId());
             setCurrentTurnPlayerEndAt(SkyjoRoomBusinessModel.this.getCurrentTurnPlayerEndAt());
+            setLastAction(SkyjoRoomBusinessModel.this.getLastAction() != null ? SkyjoRoomBusinessModel.this.getLastAction().toDataModel() : null);
 
             setGameBeginAt(SkyjoRoomBusinessModel.this.getGameBeginAt());
             setStatus(SkyjoRoomBusinessModel.this.getStatus().toDataModel());
 
             setPristineCards(SkyjoRoomBusinessModel.this.getPristineCards());
+            setCurrentDrawnCard(SkyjoRoomBusinessModel.this.getCurrentDrawnCard());
             setLastDiscardedCard(SkyjoRoomBusinessModel.this.getLastDiscardedCard());
         }};
     }
@@ -57,11 +61,13 @@ public class SkyjoRoomBusinessModel {
             setCurrentTurn(dataModel.getCurrentTurn());
             setCurrentTurnPlayerId(dataModel.getCurrentTurnPlayerId());
             setCurrentTurnPlayerEndAt(dataModel.getCurrentTurnPlayerEndAt());
+            setLastAction(dataModel.getLastAction() != null ? ESkyjoGameActionTypeBusinessModel.fromDataModel(dataModel.getLastAction()) : null);
 
             setGameBeginAt(dataModel.getGameBeginAt());
             setStatus(ESkyjoRoomStatusBusinessModel.fromDataModel(dataModel.getStatus()));
 
             setPristineCards(dataModel.getPristineCards());
+            setCurrentDrawnCard(dataModel.getCurrentDrawnCard());
             setLastDiscardedCard(dataModel.getLastDiscardedCard());
         }};
     }

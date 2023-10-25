@@ -13,7 +13,7 @@ import {WebsocketService} from "./websocket.service";
 import {UserService} from "./user.service";
 
 export type GameStatus = 'waiting-for-player' | 'selecting-cards' | 'turn-in-progress' | 'interrupted' | 'crashed';
-export type ServerMessageDiscriminator = 'cardPicked' | 'flipPlayerCard' | 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'roomOwnerChanged' | 'selectingCardsPhase';
+export type ServerMessageDiscriminator = 'cardPicked' | 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'roomOwnerChanged' | 'selectingCardsPhase' | 'setPlayerCard';
 
 @Injectable({
   providedIn: 'root'
@@ -122,10 +122,10 @@ export class SkyjoGameService {
 
     switch (message['discriminator'] as ServerMessageDiscriminator) {
       case 'cardPicked': this._handleCardPickedMessage(message); break;
-      case 'flipPlayerCard': this._handleFlipPlayerCardMessage(message); break;
       case 'gameCountdownStarted': this._handleGameCountdownStartedMessage(message); break;
       case 'gameInterrupted': this._handleGameInterruptedMessage(message); break;
       case 'internalError': this._handleInternalErrorMessage(message); break;
+      case 'newCurrentDrawnCard': this._handleNewCurrentDrawnCardMessage(message); break;
       case 'newDiscardedCard': this._handleNewDiscardedCardMessage(message); break;
       case 'newPlayerTurn': this._handleNewPlayerTurnMessage(message); break;
       case 'playerDisplayNameChanged': this._handlePlayerDisplayNameChangedMessage(message); break;
@@ -134,6 +134,7 @@ export class SkyjoGameService {
       case 'roomNameChanged': this._handleRoomNameChangedMessage(message); break;
       case 'roomOwnerChanged': this._handleRoomOwnerChanged(message); break;
       case 'selectingCardsPhase': this._handleSelectingCardsPhaseMessage(message); break;
+      case 'setPlayerCard': this._handleSetPlayerCardMessage(message); break;
       default: throw new Error('Unkown action: ' + message['discriminator']);
     }
   }
@@ -141,22 +142,6 @@ export class SkyjoGameService {
   //#region MessageHandlers
   private _handleCardPickedMessage(message: any) {
     this._waitForServerResponse = false;
-  }
-
-  private _handleFlipPlayerCardMessage(message: any) {
-    const playerId = message['playerId'];
-    const cardIndex = message['cardIndex'];
-    const cardValue = message['cardValue'];
-
-    if (!this._currentRoom)
-      throw new Error('Not in a room');
-
-    const member = this._currentRoom.members.find(member => member.playerId === playerId);
-    if (!member)
-      throw new Error('Member not found');
-
-    member.board[cardIndex] = cardValue;
-    member.board = [...member.board];
   }
 
   private _handleGameCountdownStartedMessage(message: any) {
@@ -170,6 +155,10 @@ export class SkyjoGameService {
   private _handleInternalErrorMessage(message: any) {
     alert('Le serveur à planté :(');
     this._gameStatus = 'crashed';
+  }
+
+  private _handleNewCurrentDrawnCardMessage(message: any) {
+    this._currentRoom!.currentDrawnCard = message['newCurrentDrawCardValue'];
   }
 
   private _handleNewDiscardedCardMessage(message: any) {
@@ -223,6 +212,22 @@ export class SkyjoGameService {
   private _handleSelectingCardsPhaseMessage(message: any) {
     this._currentRoom!.status = SkyjoRoomViewModelStatus.SELECTING_CARDS_PHASE;
     this._gameStatus = 'selecting-cards';
+  }
+
+  private _handleSetPlayerCardMessage(message: any) {
+    const playerId = message['playerId'];
+    const cardIndex = message['cardIndex'];
+    const cardValue = message['cardValue'];
+
+    if (!this._currentRoom)
+      throw new Error('Not in a room');
+
+    const member = this._currentRoom.members.find(member => member.playerId === playerId);
+    if (!member)
+      throw new Error('Member not found');
+
+    member.board[cardIndex] = cardValue;
+    member.board = [...member.board];
   }
   //#endregion
 }

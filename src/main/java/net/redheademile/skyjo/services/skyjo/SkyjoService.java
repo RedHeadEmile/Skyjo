@@ -10,7 +10,6 @@ import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomDataModel;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomMemberDataModel;
 import net.redheademile.skyjo.services.skyjo.repositories.ISkyjoRepository;
 import net.redheademile.skyjo.services.skyjo.websocket.models.*;
-import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +39,7 @@ public class SkyjoService implements ISkyjoService {
 
 
     private static final String AUTH_COOKIE_NAME = "SkyjoToken";
+    private static final Integer DELETED_CARD = -11;
     private final HttpServletRequest request;
     private final HttpServletResponse response;
 
@@ -286,47 +286,190 @@ public class SkyjoService implements ISkyjoService {
         simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new RoomNameChangedWebsocketModel(displayName));
     }
 
-    private void handlePlayerActionDrawACard() {
+    //#region PlayerActionHandlers
+    private void handlePlayerActionDrawACard(SkyjoRoomBusinessModel room) {
+        if (room.getLastAction() != null)
+            throw new IllegalStateException("Illegal action");
 
+        Integer topCard = room.getPristineCards().remove(0);
+        room.setCurrentDrawnCard(topCard);
+        room.setLastAction(ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD);
+
+        skyjoRepository.updateRoom(room.toDataModel());
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(topCard));
     }
 
-    private void handlePlayerActionExchangeWithPickedCard(SkyjoGameActionBusinessModel action) {
+    private void handlePlayerActionExchangeWithPickedCard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
+        if (room.getLastAction() != ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD)
+            throw new IllegalStateException("Illegal action");
 
+        if (action.getCardIndex() == null || action.getCardIndex() < 0 || action.getCardIndex() > 11)
+            throw new IllegalStateException("Invalid card index");
+
+        UUID myId = getCurrentPlayer().getId();
+        SkyjoRoomMemberBusinessModel me = room.getMembers().stream().filter(member -> member.getPlayer().getId().equals(myId)).findFirst().orElse(null);
+        if (me == null)
+            throw new IllegalStateException("Not a member of the room");
+
+        Integer cardToAdd = room.getCurrentDrawnCard();
+        if (cardToAdd == null)
+            throw new IllegalStateException("There is no drawn card");
+
+        Integer cardToDiscard = me.getRealBoard().get(action.getCardIndex());
+        if (cardToDiscard.intValue() == DELETED_CARD.intValue())
+            throw new IllegalStateException("Cannot exchange a card that do not exists anymore");
+
+        me.getRealBoard().set(action.getCardIndex(), cardToAdd);
+        me.getShownBoard()[action.getCardIndex()] = true;
+        room.setCurrentDrawnCard(null);
+        room.setLastDiscardedCard(cardToDiscard);
+
+        // Room will be updated in #nextPlayerTurn()
+        skyjoRepository.updateRoomMember(me.toDataModel());
+
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(cardToDiscard));
+
+        nextPlayerTurn(room, false);
     }
 
-    private void handlePlayerActionIgnorePickedCard() {
+    private void handlePlayerActionIgnorePickedCard(SkyjoRoomBusinessModel room) {
+        if (room.getLastAction() != ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD)
+            throw new IllegalStateException("Illegal action");
 
+        if (room.getCurrentDrawnCard() == null)
+            throw new IllegalStateException("No drawn card");
+
+        room.setLastDiscardedCard(room.getCurrentDrawnCard());
+        room.setCurrentDrawnCard(null);
+
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
+
+        nextPlayerTurn(room, false);
     }
 
-    private void handlePlayerActionExchangeWithDiscardedCard(SkyjoGameActionBusinessModel action) {
+    private void handlePlayerActionExchangeWithDiscardedCard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
+        if (room.getLastAction() != null)
+            throw new IllegalStateException("Illegal action");
 
+        if (action.getCardIndex() == null || action.getCardIndex() < 0 || action.getCardIndex() > 11)
+            throw new IllegalStateException("Invalid card index");
+
+        UUID myId = getCurrentPlayer().getId();
+        SkyjoRoomMemberBusinessModel me = room.getMembers().stream().filter(member -> member.getPlayer().getId().equals(myId)).findFirst().orElse(null);
+        if (me == null)
+            throw new IllegalStateException("Not a member of the room");
+
+        Integer cardToDiscard = me.getRealBoard().get(action.getCardIndex());
+        if (cardToDiscard.intValue() == DELETED_CARD.intValue())
+            throw new IllegalStateException("Cannot exchange a card that do not exists anymore");
+
+        Integer cardToAdd = room.getLastDiscardedCard();
+
+        me.getRealBoard().set(action.getCardIndex(), cardToAdd);
+        me.getShownBoard()[action.getCardIndex()] = true;
+        room.setLastDiscardedCard(cardToDiscard);
+
+        // Room will be updated in #nextPlayerTurn()
+        skyjoRepository.updateRoomMember(me.toDataModel());
+
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
+
+        nextPlayerTurn(room, false);
     }
 
-    private void handlePlayerActionFlipACard(SkyjoGameActionBusinessModel action) {
+    private void handlePlayerActionFlipACard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
+        if (room.getLastAction() != null)
+            throw new IllegalStateException("Illegal action");
 
+        if (action.getCardIndex() == null || action.getCardIndex() < 0 || action.getCardIndex() > 11)
+            throw new IllegalStateException("Invalid card index");
+
+        UUID myId = getCurrentPlayer().getId();
+        SkyjoRoomMemberBusinessModel me = room.getMembers().stream().filter(member -> member.getPlayer().getId().equals(myId)).findFirst().orElse(null);
+        if (me == null)
+            throw new IllegalStateException("Not a member of the room");
+
+        if (me.getShownBoard()[action.getCardIndex()])
+            throw new IllegalStateException("Card already flipped");
+
+        me.getShownBoard()[action.getCardIndex()] = true;
+
+        skyjoRepository.updateRoomMember(me.toDataModel());
+
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), me.getRealBoard().get(action.getCardIndex())));
+
+        nextPlayerTurn(room, false);
     }
+    //#endregion
 
     @Override
-    public void currentPlayerExecute(SkyjoGameActionBusinessModel action) {
+    public void currentPlayerPlayAction(SkyjoGameActionBusinessModel action) {
+        SkyjoPlayerBusinessModel me = getCurrentPlayer();
+
+        SkyjoRoomMemberDataModel member = skyjoRepository.readRoomMember(me.getId());
+        if (member == null)
+            throw new IllegalStateException("Current player is not in a room");
+
+        SkyjoRoomBusinessModel room = getRoom(member.getRoomId());
+        if (!room.getCurrentTurnPlayerId().equals(me.getId()))
+            throw new IllegalStateException("It's not your turn");
+
         switch (action.getType()) {
-            case DRAW_A_CARD -> this.handlePlayerActionDrawACard();
-            case EXCHANGE_WITH_PICKED_CARD -> this.handlePlayerActionExchangeWithPickedCard(action);
-            case IGNORE_PICKED_CARD -> this.handlePlayerActionIgnorePickedCard();
-            case EXCHANGE_WITH_DISCARDED_CARD -> this.handlePlayerActionExchangeWithDiscardedCard(action);
-            case FLIP_A_CARD -> this.handlePlayerActionFlipACard(action);
+            case DRAW_A_CARD -> this.handlePlayerActionDrawACard(room);
+            case EXCHANGE_WITH_PICKED_CARD -> this.handlePlayerActionExchangeWithPickedCard(action, room);
+            case IGNORE_PICKED_CARD -> this.handlePlayerActionIgnorePickedCard(room);
+            case EXCHANGE_WITH_DISCARDED_CARD -> this.handlePlayerActionExchangeWithDiscardedCard(action, room);
+            case FLIP_A_CARD -> this.handlePlayerActionFlipACard(action, room);
+            default -> throw new IllegalStateException("Action unknown");
         }
-
-        throw new NotImplementedException();
     }
-
     //#endregion
 
     //#region GameEngine
-    private void runGameEngine(UUID roomId) {
-        final long countdownBeforeStart = 10_000;
-        final long timePerPlayer = 30_000;
-        final long timeBetweenGameStartAndPlayerTurn = 5_000;
+    private static final long COUNTDOWN_BEFORE_START = 10_000;
+    private static final long TIME_BETWEEN_GAME_START_AND_PLAYER_TURN = 5_000;
+    private static final long TIME_PER_PLAYER = 30_000;
 
+    private void nextPlayerTurn(SkyjoRoomBusinessModel room, boolean timeoutPreviousPlayer) {
+        int currentPlayerIndex = -1;
+        for (int i = 0; i < room.getMembers().size(); i++)
+            if (room.getMembers().get(i).getPlayer().getId().equals(room.getCurrentTurnPlayerId())) {
+                currentPlayerIndex = i;
+                break;
+            }
+
+        if (currentPlayerIndex == -1)
+            throw new IllegalStateException("Player not member of the room anymore");
+
+        if (room.getCurrentDrawnCard() != null) {
+            room.setLastDiscardedCard(room.getCurrentDrawnCard());
+            room.setCurrentDrawnCard(null);
+
+            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
+        }
+        else if (timeoutPreviousPlayer) {
+            Integer topCard = room.getPristineCards().remove(0);
+            room.setLastDiscardedCard(topCard);
+            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+        }
+
+        int newCurrentPlayerIndex = (currentPlayerIndex + 1) % room.getMembers().size();
+        UUID newPlayerId = room.getMembers().get(newCurrentPlayerIndex).getPlayer().getId();
+
+        room.setCurrentTurnPlayerId(newPlayerId);
+        room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
+
+        skyjoRepository.updateRoom(room.toDataModel());
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(),
+                new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnPlayerEndAt(), timeoutPreviousPlayer));
+    }
+
+    private void runGameEngine(UUID roomId) {
         logger.info("Starting daemon for room " + roomId);
 
         Callable<List<Integer>> generateRandomCards = () -> {
@@ -360,7 +503,7 @@ public class SkyjoService implements ISkyjoService {
                 
                 if (room.getStatus() == ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS && room.getMembers().size() >= 2) {
                     if (room.getGameBeginAt() == 0) {
-                        room.setGameBeginAt(System.currentTimeMillis() + countdownBeforeStart);
+                        room.setGameBeginAt(System.currentTimeMillis() + COUNTDOWN_BEFORE_START);
                         simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new GameCountdownStartedWebsocketModel(room.getGameBeginAt()));
                         skyjoRepository.updateRoom(room.toDataModel());
                     }
@@ -385,7 +528,7 @@ public class SkyjoService implements ISkyjoService {
 
                         skyjoRepository.updateRoom(room.toDataModel());
                         logger.info("Skyjo started for room " + roomId);
-                        Thread.sleep(timeBetweenGameStartAndPlayerTurn);
+                        Thread.sleep(TIME_BETWEEN_GAME_START_AND_PLAYER_TURN);
                     }
                 }
 
@@ -425,7 +568,7 @@ public class SkyjoService implements ISkyjoService {
 
                         UUID chosen = playersWithBestCardsValue.get((int) (Math.random() * playersWithBestCardsValue.size()));
                         room.setCurrentTurnPlayerId(chosen);
-                        room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + timePerPlayer);
+                        room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
 
                         simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId,
                                 new NewPlayerTurnWebsocketModel(chosen, room.getCurrentTurnPlayerEndAt(), false));
@@ -434,23 +577,7 @@ public class SkyjoService implements ISkyjoService {
 
                 else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURNS_IN_PROGRESS) {
                     if (room.getCurrentTurnPlayerEndAt() > System.currentTimeMillis()) {
-                        int currentPlayerIndex = -1;
-                        for (int i = 0; i < room.getMembers().size(); i++)
-                            if (room.getMembers().get(i).getPlayer().getId().equals(room.getCurrentTurnPlayerId())) {
-                                currentPlayerIndex = i;
-                                break;
-                            }
-
-                        if (currentPlayerIndex == -1)
-                            throw new IllegalStateException("Player not member of the room anymore");
-
-                        int newCurrentPlayerIndex = (currentPlayerIndex + 1) % room.getMembers().size();
-                        UUID newPlayerId = room.getMembers().get(newCurrentPlayerIndex).getPlayer().getId();
-
-                        room.setCurrentTurnPlayerId(newPlayerId);
-                        room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + timePerPlayer);
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId,
-                                new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnPlayerEndAt(), true));
+                        nextPlayerTurn(room, true);
                     }
                 }
 

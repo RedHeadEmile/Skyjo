@@ -7,13 +7,13 @@ import java.util.UUID;
 
 @Getter
 @Setter
-public class FlipPlayerCardWebsocketModel extends WebsocketModel {
+public class SetPlayerCardWebsocketModel extends WebsocketModel {
     private UUID playerId;
     private int cardIndex;
     private int cardValue;
 
-    public FlipPlayerCardWebsocketModel(UUID playerId, int cardIndex, int cardValue) {
-        super("flipPlayerCard");
+    public SetPlayerCardWebsocketModel(UUID playerId, int cardIndex, int cardValue) {
+        super("setPlayerCard");
         this.playerId = playerId;
         this.cardIndex = cardIndex;
         this.cardValue = cardValue;

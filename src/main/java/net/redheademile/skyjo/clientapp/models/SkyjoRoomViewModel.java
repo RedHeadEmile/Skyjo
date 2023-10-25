@@ -36,6 +36,8 @@ public class SkyjoRoomViewModel {
     private long gameBeginAt;
     @NotNull
     private ESkyjoRoomStatusViewModel status;
+
+    private Integer currentDrawnCard;
     private Integer lastDiscardedCard;
 
     @NotNull
@@ -54,6 +56,8 @@ public class SkyjoRoomViewModel {
 
             setGameBeginAt(businessModel.getGameBeginAt());
             setStatus(ESkyjoRoomStatusViewModel.fromBusinessModel(businessModel.getStatus()));
+
+            setCurrentDrawnCard(businessModel.getCurrentDrawnCard());
             setLastDiscardedCard(businessModel.getLastDiscardedCard());
 
             setMembers(map(businessModel.getMembers(), SkyjoRoomMemberViewModel::fromBusinessModel));

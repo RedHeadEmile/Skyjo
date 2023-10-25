@@ -21,7 +21,7 @@ public class GameActionController {
     @PostMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> storeGameAction(@RequestBody @Valid SkyjoGameActionViewModel action) {
-        skyjoService.currentPlayerExecute(action.toBusinessModel());
+        skyjoService.currentPlayerPlayAction(action.toBusinessModel());
         return ResponseEntity.noContent().build();
     }
 }

@@ -18,10 +18,12 @@ public class SkyjoRoomDataModel {
     private int currentTurn;
     private UUID currentTurnPlayerId;
     private long currentTurnPlayerEndAt;
+    private ESkyjoGameActionTypeDataModel lastAction;
 
     private long gameBeginAt;
     private ESkyjoRoomStatusDataModel status = ESkyjoRoomStatusDataModel.WAITING_FOR_PLAYERS;
 
     private List<Integer> pristineCards = new ArrayList<>(150);
+    private Integer currentDrawnCard;
     private Integer lastDiscardedCard;
 }

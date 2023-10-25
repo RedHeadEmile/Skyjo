@@ -69,16 +69,19 @@ public class SkyjoRepository implements ISkyjoRepository {
 
             existingRoom.setDisplayName(room.getDisplayName());
             existingRoom.setSecretCode(room.getSecretCode());
+            existingRoom.setOwnerId(room.getOwnerId());
 
             existingRoom.setCurrentTurn(room.getCurrentTurn());
             existingRoom.setCurrentTurnPlayerId(room.getCurrentTurnPlayerId());
             existingRoom.setCurrentTurnPlayerEndAt(room.getCurrentTurnPlayerEndAt());
+            existingRoom.setLastAction(room.getLastAction());
 
             existingRoom.setGameBeginAt(room.getGameBeginAt());
             existingRoom.setStatus(room.getStatus());
 
             existingRoom.setPristineCards(new ArrayList<>(room.getPristineCards()));
-            existingRoom.setDiscardedCards(new ArrayList<>(room.getDiscardedCards()));
+            existingRoom.setCurrentDrawnCard(room.getCurrentDrawnCard());
+            existingRoom.setLastDiscardedCard(room.getLastDiscardedCard());
 
             return existingRoom.toBuilder().build();
         }
