@@ -3,6 +3,7 @@ package net.redheademile.skyjo.services.skyjo;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import net.redheademile.skyjo.services.async.IAsyncService;
 import net.redheademile.skyjo.services.skyjo.business.models.*;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoPlayerDataModel;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomDataModel;
@@ -14,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.annotation.RequestScope;
 
@@ -23,7 +23,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
 
 import static net.redheademile.skyjo.utils.Mapping.map;
 
@@ -33,6 +32,7 @@ public class SkyjoService implements ISkyjoService {
 
     private final Logger logger = LoggerFactory.getLogger(SkyjoService.class);
 
+    private final IAsyncService asyncService;
     private final ISkyjoRepository skyjoRepository;
 
     private boolean isInitialized = false;
@@ -47,6 +47,7 @@ public class SkyjoService implements ISkyjoService {
 
     @Autowired
     public SkyjoService(
+            IAsyncService asyncService,
             ISkyjoRepository skyjoRepository,
 
             HttpServletRequest request,
@@ -54,6 +55,7 @@ public class SkyjoService implements ISkyjoService {
 
             SimpMessagingTemplate simpMessagingTemplate
     ) {
+        this.asyncService = asyncService;
         this.skyjoRepository = skyjoRepository;
         this.request = request;
         this.response = response;
@@ -81,18 +83,20 @@ public class SkyjoService implements ISkyjoService {
         while (existingRoom != null);
         //#endregion
 
+        SkyjoPlayerBusinessModel me = getCurrentPlayer();
+
         //#region Create new room
         SkyjoRoomBusinessModel newRoom = new SkyjoRoomBusinessModel();
         newRoom.setId(uuid);
         newRoom.setSecretCode(secretCode);
         newRoom.setDisplayName(displayName);
+        newRoom.setOwnerId(me.getId());
         newRoom.setStatus(ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS);
 
         skyjoRepository.createRoom(newRoom.toDataModel());
         //#endregion
 
         //#region Add currentPlayer to the room
-        SkyjoPlayerBusinessModel me = getCurrentPlayer();
         removeCurrentPlayerFromRoom();
 
         SkyjoRoomMemberBusinessModel member = new SkyjoRoomMemberBusinessModel();
@@ -103,7 +107,7 @@ public class SkyjoService implements ISkyjoService {
         //#endregion
 
         // Start the game engine for this room
-        runGameEngineAsync(uuid);
+        asyncService.runAsync(() -> runGameEngine(newRoom.getId()));
         
         return newRoom;
     }
@@ -265,15 +269,60 @@ public class SkyjoService implements ISkyjoService {
     }
 
     @Override
-    public void currentPlayerExecute(GameActionBusinessModel action) {
+    public void setCurrentPlayerRoomDisplayName(String displayName) {
+        SkyjoPlayerBusinessModel me = getCurrentPlayer();
+        SkyjoRoomMemberDataModel member = skyjoRepository.readRoomMember(me.getId());
+
+        if (member == null)
+            throw new IllegalStateException("Not in a room");
+
+        SkyjoRoomBusinessModel room = getRoom(member.getRoomId());
+
+        if (!room.getOwnerId().equals(me.getId()))
+            throw new IllegalStateException("Not owner of the room");
+
+        room.setDisplayName(displayName);
+        skyjoRepository.updateRoom(room.toDataModel());
+        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new RoomNameChangedWebsocketModel(displayName));
+    }
+
+    private void handlePlayerActionDrawACard() {
+
+    }
+
+    private void handlePlayerActionExchangeWithPickedCard(SkyjoGameActionBusinessModel action) {
+
+    }
+
+    private void handlePlayerActionIgnorePickedCard() {
+
+    }
+
+    private void handlePlayerActionExchangeWithDiscardedCard(SkyjoGameActionBusinessModel action) {
+
+    }
+
+    private void handlePlayerActionFlipACard(SkyjoGameActionBusinessModel action) {
+
+    }
+
+    @Override
+    public void currentPlayerExecute(SkyjoGameActionBusinessModel action) {
+        switch (action.getType()) {
+            case DRAW_A_CARD -> this.handlePlayerActionDrawACard();
+            case EXCHANGE_WITH_PICKED_CARD -> this.handlePlayerActionExchangeWithPickedCard(action);
+            case IGNORE_PICKED_CARD -> this.handlePlayerActionIgnorePickedCard();
+            case EXCHANGE_WITH_DISCARDED_CARD -> this.handlePlayerActionExchangeWithDiscardedCard(action);
+            case FLIP_A_CARD -> this.handlePlayerActionFlipACard(action);
+        }
+
         throw new NotImplementedException();
     }
 
     //#endregion
 
     //#region GameEngine
-    @Async
-    protected CompletableFuture<Void> runGameEngineAsync(UUID roomId) {
+    private void runGameEngine(UUID roomId) {
         final long countdownBeforeStart = 10_000;
         final long timePerPlayer = 30_000;
         final long timeBetweenGameStartAndPlayerTurn = 5_000;
@@ -283,14 +332,13 @@ public class SkyjoService implements ISkyjoService {
         Callable<List<Integer>> generateRandomCards = () -> {
             List<Integer> cards = new ArrayList<>();
             for (int i = 0; i < 15; i++) {
-                if (i < 5)
-                    cards.add(-2); // 5 cards of -2
-
-                if (i < 10)
-                    for (int cardNumber = 1; cardNumber <= 12; cardNumber++)
-                        cards.add(cardNumber); // 10 cards of 1 to 12
-
-                cards.add(0); // 15 cards of 0
+                for (int cardNumber = -2; cardNumber <= 12; cardNumber++)
+                    if (
+                            (cardNumber == 0) || // 15 cards of 0
+                            (cardNumber == -2 && i < 5) || // 5 cards of -2
+                            ((cardNumber == -1 || cardNumber >= 1) && i < 10) // 10 cards of -1 and [1; 12]
+                    )
+                        cards.add(cardNumber);
             }
 
             if (cards.size() != 150)
@@ -312,15 +360,14 @@ public class SkyjoService implements ISkyjoService {
                 
                 if (room.getStatus() == ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS && room.getMembers().size() >= 2) {
                     if (room.getGameBeginAt() == 0) {
-                        room.setGameBeginAt(System.currentTimeMillis() + countdownBeforeStart); // start in 10sec
+                        room.setGameBeginAt(System.currentTimeMillis() + countdownBeforeStart);
                         simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new GameCountdownStartedWebsocketModel(room.getGameBeginAt()));
                         skyjoRepository.updateRoom(room.toDataModel());
                     }
-                    else if (room.getGameBeginAt() >= System.currentTimeMillis()) {
+                    else if (System.currentTimeMillis() >= room.getGameBeginAt()) {
                         room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS_PHASE);
                         room.setCurrentTurn(0);
                         room.setPristineCards(generateRandomCards.call());
-                        room.setDiscardedCards(new ArrayList<>());
 
                         for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
                             List<Integer> cards = room.getPristineCards().subList(0, 12);
@@ -331,9 +378,11 @@ public class SkyjoService implements ISkyjoService {
                         }
 
                         Integer topCard = room.getPristineCards().remove(0);
-                        room.getDiscardedCards().add(topCard);
+                        room.setLastDiscardedCard(topCard);
 
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new GameStartedWebsocketModel());
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new SelectingCardsPhaseWebsocketModel());
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+
                         skyjoRepository.updateRoom(room.toDataModel());
                         logger.info("Skyjo started for room " + roomId);
                         Thread.sleep(timeBetweenGameStartAndPlayerTurn);
@@ -373,12 +422,13 @@ public class SkyjoService implements ISkyjoService {
 
                     if (letsGo) {
                         room.setStatus(ESkyjoRoomStatusBusinessModel.TURNS_IN_PROGRESS);
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new GameStartedWebsocketModel());
 
                         UUID chosen = playersWithBestCardsValue.get((int) (Math.random() * playersWithBestCardsValue.size()));
                         room.setCurrentTurnPlayerId(chosen);
                         room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + timePerPlayer);
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new NewPlayerTurnWebsocketModel(chosen, false));
+
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId,
+                                new NewPlayerTurnWebsocketModel(chosen, room.getCurrentTurnPlayerEndAt(), false));
                     }
                 }
 
@@ -399,7 +449,8 @@ public class SkyjoService implements ISkyjoService {
 
                         room.setCurrentTurnPlayerId(newPlayerId);
                         room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + timePerPlayer);
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new NewPlayerTurnWebsocketModel(newPlayerId, true));
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId,
+                                new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnPlayerEndAt(), true));
                     }
                 }
 
@@ -413,8 +464,6 @@ public class SkyjoService implements ISkyjoService {
         finally {
             logger.info("End of daemon for room " + roomId);
         }
-
-        return CompletableFuture.completedFuture(null);
     }
     //#endregion
 }

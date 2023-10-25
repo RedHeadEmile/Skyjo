@@ -1,1 +1,27 @@
-<p>room-show works!</p>
+<div>
+  <div class="room-title">
+    <ng-container *ngIf="iAmTheOwner">
+      <input (blur)="onRoomNameBlur()" [(ngModel)]="roomName" type="text" placeholder="Room name" minlength="3" maxlength="32" />
+    </ng-container>
+    <ng-container *ngIf="!iAmTheOwner">
+      <h1>{{ roomName }}</h1>
+      <span>owned by {{ ownerName }}</span>
+    </ng-container>
+  </div>
+</div>
+<span>Les autres joueurs:</span>
+<div class="other-members">
+  <div *ngFor="let member of otherMembers">
+    <span>{{ member.playerDisplayName }}</span>
+    <app-skyjo-board clickAction="none" [cards]="member.board" />
+  </div>
+</div>
+<span>La pioche:</span>
+<div class="deck" [class.click-disabled]="!iCanPick" [class.click-enabled]="iCanPick">
+  <span>?</span>
+  <span>{{ lastDiscardedCardValue }}</span>
+</div>
+<span>Mon jeu:</span>
+<div class="me">
+  <app-skyjo-board [clickAction]="iCanPlay ? 'allowed' : 'disallowed'" (onCardClicked)="onCardClicked($event)" [cards]="myCards" />
+</div>

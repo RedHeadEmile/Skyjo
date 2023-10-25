@@ -4,7 +4,6 @@ import net.redheademile.skyjo.services.skyjo.data.models.SkyjoPlayerDataModel;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomDataModel;
 import net.redheademile.skyjo.services.skyjo.data.models.SkyjoRoomMemberDataModel;
 import org.springframework.stereotype.Repository;
-import org.springframework.web.context.annotation.RequestScope;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,7 +13,6 @@ import java.util.UUID;
 import static net.redheademile.skyjo.utils.Mapping.map;
 
 @Repository
-@RequestScope
 public class SkyjoRepository implements ISkyjoRepository {
     private static final List<SkyjoRoomDataModel> rooms = new ArrayList<>();
     private static final List<SkyjoRoomMemberDataModel> roomMembers = new ArrayList<>();

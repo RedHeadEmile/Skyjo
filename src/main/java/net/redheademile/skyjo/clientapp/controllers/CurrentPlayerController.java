@@ -1,10 +1,7 @@
 package net.redheademile.skyjo.clientapp.controllers;
 
 import jakarta.validation.Valid;
-import net.redheademile.skyjo.clientapp.models.SkyjoCurrentPlayerRoomUpdateRequestViewModel;
-import net.redheademile.skyjo.clientapp.models.SkyjoCurrentPlayerSettingsUpdateRequest;
-import net.redheademile.skyjo.clientapp.models.SkyjoPlayerViewModel;
-import net.redheademile.skyjo.clientapp.models.SkyjoRoomViewModel;
+import net.redheademile.skyjo.clientapp.models.*;
 import net.redheademile.skyjo.services.skyjo.ISkyjoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -42,6 +39,13 @@ public class CurrentPlayerController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> deleteCurrentPlayerRoom() {
         skyjoService.removeCurrentPlayerFromRoom();
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("room/display-name")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public ResponseEntity<Void> updateCurrentPlayerRoomDisplayName(@RequestBody @Valid SkyjoCurrentPlayerRoomDisplayNameRequestViewModel request) {
+        skyjoService.setCurrentPlayerRoomDisplayName(request.getNewDisplayName());
         return ResponseEntity.noContent().build();
     }
 }

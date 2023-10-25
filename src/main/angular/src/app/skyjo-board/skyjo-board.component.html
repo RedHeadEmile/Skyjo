@@ -1,3 +1,7 @@
-<div class="card" *ngFor="let i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]" [class.can-be-clicked]="getCardValue(i) !== '?' && canCardBeClicked">
+<div *ngFor="let i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]"
+     class="card"
+     [class.click-enabled]="getCardValue(i) !== '?' && clickAction === 'allowed'"
+     [class.click-disabled]="clickAction === 'disallowed'"
+     [class.deleted]="isCardDeleted(i)">
   {{ getCardValue(i) }}
 </div>

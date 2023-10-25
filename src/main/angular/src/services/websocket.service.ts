@@ -34,16 +34,21 @@ export class WebsocketService extends RxStomp {
     });
   }
 
-  public async subscribeToRoom(roomId: string): Promise<void> {
+  public async subscribeToRoom(roomId: string, handler: (message: any) => void): Promise<void> {
+    this._stompSubscription?.unsubscribe();
     await super.deactivate();
     super.activate();
 
     this._stompSubscription =
       super.watch({ destination: '/topic/rooms/' + roomId })
-        .subscribe((message: IMessage) => this._handleMessage(message))
-  }
-
-  private _handleMessage(message: IMessage) {
-    console.log(message.body);
+        .subscribe((message: IMessage) => {
+          try {
+            const obj = JSON.parse(message.body);
+            handler(obj);
+          }
+          catch (_) {
+            handler(message.body);
+          }
+        })
   }
 }

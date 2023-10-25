@@ -6,13 +6,24 @@
 }
 
 .card {
+  border: 1px solid black;
+  padding: .2rem;
+
   display: flex;
   justify-content: center;
   align-items: center;
 
-  cursor: not-allowed;
+  &.click-disabled {
+    cursor: not-allowed;
+  }
 
-  &.can-be-clicked {
+  &.click-enabled {
     cursor: pointer;
+  }
+
+  &.deleted {
+    cursor: none;
+    border: 0;
+    padding: 0;
   }
 }

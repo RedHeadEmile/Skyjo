@@ -7,7 +7,6 @@ import lombok.Getter;
 import lombok.Setter;
 import net.redheademile.skyjo.services.skyjo.business.models.SkyjoRoomBusinessModel;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,6 +22,9 @@ public class SkyjoRoomViewModel {
     private String displayName;
     @NotBlank
     private String secretCode;
+    @NotBlank
+    @NotNull
+    private UUID ownerId;
 
     @NotNull
     private int currentTurn;
@@ -34,11 +36,7 @@ public class SkyjoRoomViewModel {
     private long gameBeginAt;
     @NotNull
     private ESkyjoRoomStatusViewModel status;
-
-    @NotNull
-    private List<Integer> pristineCards;
-    @NotNull
-    private List<Integer> discardedCards;
+    private Integer lastDiscardedCard;
 
     @NotNull
     private List<SkyjoRoomMemberViewModel> members;
@@ -48,6 +46,7 @@ public class SkyjoRoomViewModel {
             setId(businessModel.getId());
             setDisplayName(businessModel.getDisplayName());
             setSecretCode(businessModel.getSecretCode());
+            setOwnerId(businessModel.getOwnerId());
 
             setCurrentTurn(businessModel.getCurrentTurn());
             setCurrentTurnPlayerId(businessModel.getCurrentTurnPlayerId());
@@ -55,9 +54,7 @@ public class SkyjoRoomViewModel {
 
             setGameBeginAt(businessModel.getGameBeginAt());
             setStatus(ESkyjoRoomStatusViewModel.fromBusinessModel(businessModel.getStatus()));
-
-            setPristineCards(businessModel.getPristineCards());
-            setDiscardedCards(businessModel.getDiscardedCards());
+            setLastDiscardedCard(businessModel.getLastDiscardedCard());
 
             setMembers(map(businessModel.getMembers(), SkyjoRoomMemberViewModel::fromBusinessModel));
         }};

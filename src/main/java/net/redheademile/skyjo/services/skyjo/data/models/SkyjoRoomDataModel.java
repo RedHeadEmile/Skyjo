@@ -13,6 +13,7 @@ public class SkyjoRoomDataModel {
     private UUID id;
     private String displayName;
     private String secretCode;
+    private UUID ownerId;
 
     private int currentTurn;
     private UUID currentTurnPlayerId;
@@ -22,5 +23,5 @@ public class SkyjoRoomDataModel {
     private ESkyjoRoomStatusDataModel status = ESkyjoRoomStatusDataModel.WAITING_FOR_PLAYERS;
 
     private List<Integer> pristineCards = new ArrayList<>(150);
-    private List<Integer> discardedCards = new ArrayList<>(150);
+    private Integer lastDiscardedCard;
 }

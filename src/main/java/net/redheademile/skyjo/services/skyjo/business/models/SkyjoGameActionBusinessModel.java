@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class GameActionBusinessModel {
-    private EGameActionTypeBusinessModel type;
+public class SkyjoGameActionBusinessModel {
+    private ESkyjoGameActionTypeBusinessModel type;
     private Integer cardIndex;
 }

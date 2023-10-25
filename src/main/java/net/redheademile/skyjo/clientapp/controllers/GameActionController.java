@@ -1,7 +1,7 @@
 package net.redheademile.skyjo.clientapp.controllers;
 
 import jakarta.validation.Valid;
-import net.redheademile.skyjo.clientapp.models.GameActionViewModel;
+import net.redheademile.skyjo.clientapp.models.SkyjoGameActionViewModel;
 import net.redheademile.skyjo.services.skyjo.ISkyjoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -20,7 +20,7 @@ public class GameActionController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public ResponseEntity<Void> storeGameAction(@RequestBody @Valid GameActionViewModel action) {
+    public ResponseEntity<Void> storeGameAction(@RequestBody @Valid SkyjoGameActionViewModel action) {
         skyjoService.currentPlayerExecute(action.toBusinessModel());
         return ResponseEntity.noContent().build();
     }

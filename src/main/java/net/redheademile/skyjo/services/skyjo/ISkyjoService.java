@@ -1,6 +1,6 @@
 package net.redheademile.skyjo.services.skyjo;
 
-import net.redheademile.skyjo.services.skyjo.business.models.GameActionBusinessModel;
+import net.redheademile.skyjo.services.skyjo.business.models.SkyjoGameActionBusinessModel;
 import net.redheademile.skyjo.services.skyjo.business.models.SkyjoPlayerBusinessModel;
 import net.redheademile.skyjo.services.skyjo.business.models.SkyjoRoomBusinessModel;
 
@@ -21,6 +21,8 @@ public interface ISkyjoService {
     SkyjoRoomBusinessModel addCurrentPlayerToRoom(String roomSecretCode);
     void removeCurrentPlayerFromRoom();
 
-    void currentPlayerExecute(GameActionBusinessModel action);
+    void setCurrentPlayerRoomDisplayName(String displayName);
+
+    void currentPlayerExecute(SkyjoGameActionBusinessModel action);
     //#endregion
 }

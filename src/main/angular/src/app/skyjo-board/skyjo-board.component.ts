@@ -1,4 +1,5 @@
 import {Component, EventEmitter, Input, Output} from '@angular/core';
+import {SkyjoGameService} from "../../services/skyjo-game.service";
 
 @Component({
   selector: 'app-skyjo-board',
@@ -7,16 +8,25 @@ import {Component, EventEmitter, Input, Output} from '@angular/core';
 })
 export class SkyjoBoardComponent {
   @Input() cards: number[] = [];
-  @Input() canCardBeClicked: boolean = true;
+  @Input() clickAction: 'none' | 'disallowed' | 'allowed' = 'none';
 
   @Output() onCardClicked: EventEmitter<number> = new EventEmitter<number>();
 
-  getCardValue(cardIndex: number) {
+  isCardDeleted(cardIndex: number): boolean {
+    if (this.cards.length > cardIndex)
+      return this.cards[cardIndex] === SkyjoGameService.DELETED_CARD;
+    return false;
+  }
+
+  getCardValue(cardIndex: number): string {
+    if (this.isCardDeleted(cardIndex))
+      return '';
+
     if (this.cards.length > cardIndex) {
       const value = this.cards[cardIndex];
       if (value < -2 || value > 12)
         return '?';
-      return value;
+      return value.toString();
     }
     return '?';
   }
