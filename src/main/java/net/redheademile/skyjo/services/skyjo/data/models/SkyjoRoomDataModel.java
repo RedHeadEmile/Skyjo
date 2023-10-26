@@ -15,10 +15,10 @@ public class SkyjoRoomDataModel {
     private String secretCode;
     private UUID ownerId;
 
-    private int currentTurn;
+    private int currentRound;
     private UUID currentTurnPlayerId;
-    private long currentTurnPlayerEndAt;
-    private ESkyjoGameActionTypeDataModel lastAction;
+    private long currentTurnEndAt;
+    private ESkyjoGameActionTypeDataModel currentTurnLastAction;
 
     private long gameBeginAt;
     private ESkyjoRoomStatusDataModel status = ESkyjoRoomStatusDataModel.WAITING_FOR_PLAYERS;

@@ -40,14 +40,14 @@
     display: flex;
     justify-content: center;
     align-items: center;
-  }
 
-  &.click-disabled {
-    cursor: not-allowed;
-  }
+    &.click-disabled {
+      cursor: not-allowed;
+    }
 
-  &.click-enabled {
-    cursor: pointer;
+    &.click-enabled {
+      cursor: pointer;
+    }
   }
 }
 

@@ -288,19 +288,19 @@ public class SkyjoService implements ISkyjoService {
 
     //#region PlayerActionHandlers
     private void handlePlayerActionDrawACard(SkyjoRoomBusinessModel room) {
-        if (room.getLastAction() != null)
+        if (room.getStatus() != ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS || room.getCurrentTurnLastAction() != null)
             throw new IllegalStateException("Illegal action");
 
         Integer topCard = room.getPristineCards().remove(0);
         room.setCurrentDrawnCard(topCard);
-        room.setLastAction(ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD);
+        room.setCurrentTurnLastAction(ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD);
 
         skyjoRepository.updateRoom(room.toDataModel());
         simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(topCard));
     }
 
     private void handlePlayerActionExchangeWithPickedCard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
-        if (room.getLastAction() != ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD)
+        if (room.getCurrentTurnLastAction() != ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD)
             throw new IllegalStateException("Illegal action");
 
         if (action.getCardIndex() == null || action.getCardIndex() < 0 || action.getCardIndex() > 11)
@@ -335,7 +335,7 @@ public class SkyjoService implements ISkyjoService {
     }
 
     private void handlePlayerActionIgnorePickedCard(SkyjoRoomBusinessModel room) {
-        if (room.getLastAction() != ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD)
+        if (room.getCurrentTurnLastAction() != ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD)
             throw new IllegalStateException("Illegal action");
 
         if (room.getCurrentDrawnCard() == null)
@@ -351,7 +351,7 @@ public class SkyjoService implements ISkyjoService {
     }
 
     private void handlePlayerActionExchangeWithDiscardedCard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
-        if (room.getLastAction() != null)
+        if (room.getStatus() != ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS || room.getCurrentTurnLastAction() != null)
             throw new IllegalStateException("Illegal action");
 
         if (action.getCardIndex() == null || action.getCardIndex() < 0 || action.getCardIndex() > 11)
@@ -382,7 +382,9 @@ public class SkyjoService implements ISkyjoService {
     }
 
     private void handlePlayerActionFlipACard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
-        if (room.getLastAction() != null)
+        if (
+                (room.getStatus() != ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS && room.getStatus() != ESkyjoRoomStatusBusinessModel.SELECTING_CARDS)
+                || room.getCurrentTurnLastAction() != null)
             throw new IllegalStateException("Illegal action");
 
         if (action.getCardIndex() == null || action.getCardIndex() < 0 || action.getCardIndex() > 11)
@@ -402,7 +404,8 @@ public class SkyjoService implements ISkyjoService {
 
         simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), me.getRealBoard().get(action.getCardIndex())));
 
-        nextPlayerTurn(room, false);
+        if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS)
+            nextPlayerTurn(room, false);
     }
     //#endregion
 
@@ -415,7 +418,7 @@ public class SkyjoService implements ISkyjoService {
             throw new IllegalStateException("Current player is not in a room");
 
         SkyjoRoomBusinessModel room = getRoom(member.getRoomId());
-        if (!room.getCurrentTurnPlayerId().equals(me.getId()))
+        if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS && !room.getCurrentTurnPlayerId().equals(me.getId()))
             throw new IllegalStateException("It's not your turn");
 
         switch (action.getType()) {
@@ -436,11 +439,51 @@ public class SkyjoService implements ISkyjoService {
 
     private void nextPlayerTurn(SkyjoRoomBusinessModel room, boolean timeoutPreviousPlayer) {
         int currentPlayerIndex = -1;
-        for (int i = 0; i < room.getMembers().size(); i++)
-            if (room.getMembers().get(i).getPlayer().getId().equals(room.getCurrentTurnPlayerId())) {
+        for (int i = 0; i < room.getMembers().size(); i++) {
+            SkyjoRoomMemberBusinessModel member = room.getMembers().get(i);
+            if (member.getPlayer().getId().equals(room.getCurrentTurnPlayerId())) {
                 currentPlayerIndex = i;
+
+                //#region Delete full columns
+                // Delete columns if necessary
+                int[][] columnsIndexes = {
+                        {0, 4, 8},
+                        {1, 5, 9},
+                        {2, 6, 10},
+                        {3, 7, 11}
+                };
+
+                for (int[] columnIndexes : columnsIndexes) {
+                    // Check that all cards fo the column are shown
+                    if (!member.getShownBoard()[columnIndexes[0]]
+                            || !member.getShownBoard()[columnIndexes[1]]
+                            || !member.getShownBoard()[columnIndexes[2]])
+                        continue;
+
+                    int value1 = member.getRealBoard().get(columnIndexes[0]);
+                    int value2 = member.getRealBoard().get(columnIndexes[1]);
+                    int value3 = member.getRealBoard().get(columnIndexes[2]);
+
+                    // Ignore already deleted column
+                    if (value1 == DELETED_CARD)
+                        continue;
+
+                    // If all the cards of the column are the same, delete them
+                    if (value1 == value2 && value2 == value3) {
+                        member.getRealBoard().set(columnIndexes[0], DELETED_CARD);
+                        member.getRealBoard().set(columnIndexes[1], DELETED_CARD);
+                        member.getRealBoard().set(columnIndexes[2], DELETED_CARD);
+
+                        skyjoRepository.updateRoomMember(member.toDataModel());
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[0], DELETED_CARD));
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[1], DELETED_CARD));
+                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[2], DELETED_CARD));
+                    }
+                }
+                //#endregion
                 break;
             }
+        }
 
         if (currentPlayerIndex == -1)
             throw new IllegalStateException("Player not member of the room anymore");
@@ -462,11 +505,11 @@ public class SkyjoService implements ISkyjoService {
         UUID newPlayerId = room.getMembers().get(newCurrentPlayerIndex).getPlayer().getId();
 
         room.setCurrentTurnPlayerId(newPlayerId);
-        room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
+        room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
 
         skyjoRepository.updateRoom(room.toDataModel());
         simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(),
-                new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnPlayerEndAt(), timeoutPreviousPlayer));
+                new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnEndAt(), timeoutPreviousPlayer));
     }
 
     private void runGameEngine(UUID roomId) {
@@ -508,8 +551,8 @@ public class SkyjoService implements ISkyjoService {
                         skyjoRepository.updateRoom(room.toDataModel());
                     }
                     else if (System.currentTimeMillis() >= room.getGameBeginAt()) {
-                        room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS_PHASE);
-                        room.setCurrentTurn(0);
+                        room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS);
+                        room.setCurrentRound(0);
                         room.setPristineCards(generateRandomCards.call());
 
                         for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
@@ -532,7 +575,7 @@ public class SkyjoService implements ISkyjoService {
                     }
                 }
 
-                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.SELECTING_CARDS_PHASE) {
+                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.SELECTING_CARDS) {
                     boolean letsGo = true;
 
                     int bestCardsValue = 0;
@@ -564,20 +607,21 @@ public class SkyjoService implements ISkyjoService {
                     }
 
                     if (letsGo) {
-                        room.setStatus(ESkyjoRoomStatusBusinessModel.TURNS_IN_PROGRESS);
+                        room.setStatus(ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS);
 
                         UUID chosen = playersWithBestCardsValue.get((int) (Math.random() * playersWithBestCardsValue.size()));
                         room.setCurrentTurnPlayerId(chosen);
-                        room.setCurrentTurnPlayerEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
+                        room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
 
+                        skyjoRepository.updateRoom(room.toDataModel());
                         simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId,
-                                new NewPlayerTurnWebsocketModel(chosen, room.getCurrentTurnPlayerEndAt(), false));
+                                new NewPlayerTurnWebsocketModel(chosen, room.getCurrentTurnEndAt(), false));
                     }
                 }
 
-                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURNS_IN_PROGRESS) {
-                    if (room.getCurrentTurnPlayerEndAt() > System.currentTimeMillis()) {
-                        nextPlayerTurn(room, true);
+                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS) {
+                    if (room.getCurrentTurnEndAt() > System.currentTimeMillis()) {
+                        //nextPlayerTurn(room, true);
                     }
                 }
 
@@ -585,6 +629,9 @@ public class SkyjoService implements ISkyjoService {
             }
         }
         catch (Exception e) {
+            skyjoRepository.readRoomMembers(roomId).forEach(member -> skyjoRepository.deleteRoomMember(roomId, member.getPlayerId()));
+            skyjoRepository.deleteRoom(roomId);
+
             simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new InternalErrorWebsocketModel());
             throw new RuntimeException(e);
         }

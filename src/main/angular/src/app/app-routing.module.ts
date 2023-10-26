@@ -1,8 +1,8 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
-import {RoomIndexComponent} from "./room-index/room-index.component";
+import {RoomIndexComponent} from "./skyjo-room-index/room-index.component";
 import {roomGuard} from "../guards/room.guard";
-import {RoomShowComponent} from "./room-show/room-show.component";
+import {SkyjoRoomShowComponent} from "./skyjo-room-show/skyjo-room-show.component";
 
 const routes: Routes = [
   {
@@ -16,7 +16,7 @@ const routes: Routes = [
       {
         path: ':roomId',
         canActivate: [roomGuard],
-        component: RoomShowComponent
+        component: SkyjoRoomShowComponent
       }
     ]
   },

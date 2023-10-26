@@ -2,41 +2,73 @@ import {Injectable} from '@angular/core';
 import {
   ApiService,
   SkyjoCurrentPlayerRoomDisplayNameRequestViewModel,
+  SkyjoCurrentPlayerSettingsUpdateRequest,
   SkyjoGameActionViewModel,
   SkyjoGameActionViewModelType,
+  SkyjoPlayerViewModel,
   SkyjoRoomMemberViewModel,
   SkyjoRoomViewModel,
   SkyjoRoomViewModelStatus
 } from "./api.service";
 import {lastValueFrom} from "rxjs";
 import {WebsocketService} from "./websocket.service";
-import {UserService} from "./user.service";
 
-export type GameStatus = 'waiting-for-player' | 'selecting-cards' | 'turn-in-progress' | 'interrupted' | 'crashed';
 export type ServerMessageDiscriminator = 'cardPicked' | 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'roomOwnerChanged' | 'selectingCardsPhase' | 'setPlayerCard';
 
 @Injectable({
   providedIn: 'root'
 })
-export class SkyjoGameService {
+export class SkyjoService {
 
   static readonly HIDDEN_CARD = -10;
   static readonly DELETED_CARD = -11;
 
-  private _gameStatus: GameStatus = 'waiting-for-player';
-  private _currentRoom?: SkyjoRoomViewModel;
   private _personalMessage?: string;
 
   constructor(
     private readonly _apiService: ApiService,
-    private readonly _userService: UserService,
     private readonly _websocketService: WebsocketService
   ) { }
 
+  //#region CurrentPlayer
+  private static readonly LOCALSTORAGE_PREFERRED_NAME_KEY = 'skyjo-preferred-name';
+
+  private _currentPlayer?: SkyjoPlayerViewModel;
+  private _currentPlayerPromise?: Promise<SkyjoPlayerViewModel>;
+
+  public async refreshCurrentPlayer(): Promise<SkyjoPlayerViewModel> {
+    return this._currentPlayerPromise = new Promise<SkyjoPlayerViewModel>(async accept => {
+      this._currentPlayer = await lastValueFrom(this._apiService.showCurrentPlayer());
+      const preferredName = localStorage.getItem(SkyjoService.LOCALSTORAGE_PREFERRED_NAME_KEY)?.trim();
+      if (!!preferredName && preferredName.length > 3 && this._currentPlayer.displayName !== preferredName)
+        await this.setCurrentPlayerDisplayName(preferredName);
+      accept(this._currentPlayer);
+    });
+  }
+
+  public get currentPlayer(): SkyjoPlayerViewModel | undefined {
+    return this._currentPlayer;
+  }
+
+  public get currentUserPromise(): Promise<SkyjoPlayerViewModel> {
+    return this._currentPlayerPromise ?? this.refreshCurrentPlayer();
+  }
+
+  public async setCurrentPlayerDisplayName(newDisplayName: string) {
+    this._currentPlayer = await lastValueFrom(this._apiService.updateCurrentPlayerSettings(new SkyjoCurrentPlayerSettingsUpdateRequest({ displayName: newDisplayName })));
+    localStorage.setItem(SkyjoService.LOCALSTORAGE_PREFERRED_NAME_KEY, newDisplayName);
+  }
+  //#endregion
+
+  public get personalMessage(): string | undefined {
+    return this._personalMessage;
+  }
+
+  //#region CurrentRoom
+  private _currentRoom?: SkyjoRoomViewModel;
   public async refreshCurrentRoom(roomId: string): Promise<SkyjoRoomViewModel> {
     this._currentRoom = await lastValueFrom(this._apiService.showRoom(roomId));
-    this._gameStatus = 'waiting-for-player';
-    await this._websocketService.subscribeToRoom(this._currentRoom.id, msg => this._serverMessageHandler(msg));
+    await this._websocketService.subscribe("/topic/rooms/" + this._currentRoom.id, msg => this._serverMessageHandler(msg));
     return this._currentRoom;
   }
 
@@ -44,16 +76,8 @@ export class SkyjoGameService {
     this._currentRoom = undefined;
   }
 
-  public get gameStatus(): GameStatus {
-    return this._gameStatus;
-  }
-
   public get currentRoom(): SkyjoRoomViewModel | undefined {
     return this._currentRoom;
-  }
-
-  public get personalMessage(): string | undefined {
-    return this._personalMessage;
   }
 
   public async setCurrentRoomName(newName: string) {
@@ -68,6 +92,7 @@ export class SkyjoGameService {
 
     this._currentRoom.displayName = newName;
   }
+  //#endregion
 
   //#region PlayerAction
   private _waitForServerResponse: boolean = false;
@@ -109,6 +134,16 @@ export class SkyjoGameService {
       cardIndex: cardIndex
     })));
   }
+
+  public async flipACard(cardIndex: number) {
+    if (this._waitForServerResponse) return;
+    this._waitForServerResponse = true;
+
+    await lastValueFrom(this._apiService.storeGameAction(new SkyjoGameActionViewModel({
+      type: SkyjoGameActionViewModelType.FLIP_A_CARD,
+      cardIndex: cardIndex
+    })));
+  }
   //#endregion
 
   private _serverMessageHandler(message: any) {
@@ -146,36 +181,41 @@ export class SkyjoGameService {
 
   private _handleGameCountdownStartedMessage(message: any) {
     this._currentRoom!.gameBeginAt = message['gameBeginAt'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleGameInterruptedMessage(message: any) {
-    this._gameStatus = 'interrupted';
+    this._currentRoom!.status = SkyjoRoomViewModelStatus.INTERRUPTED;
   }
 
   private _handleInternalErrorMessage(message: any) {
     alert('Le serveur à planté :(');
-    this._gameStatus = 'crashed';
+    this._currentRoom!.status = SkyjoRoomViewModelStatus.CRASHED;
   }
 
   private _handleNewCurrentDrawnCardMessage(message: any) {
     this._currentRoom!.currentDrawnCard = message['newCurrentDrawCardValue'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleNewDiscardedCardMessage(message: any) {
     this._waitForServerResponse = false;
     this._currentRoom!.lastDiscardedCard = message['newDiscardedCardValue'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleNewPlayerTurnMessage(message: any) {
     this._waitForServerResponse = false;
+    this._currentRoom!.status = SkyjoRoomViewModelStatus.TURN_IN_PROGRESS;
 
-    if (this._currentRoom?.currentTurnPlayerId === this._userService.currentUser?.id && message['previousPlayerWasTimedOut']) {
+    if (this._currentRoom?.currentTurnPlayerId === this.currentPlayer?.id && message['previousPlayerWasTimedOut']) {
       this._personalMessage = 'Trop tard!';
       setTimeout(() => this._personalMessage = undefined, 2500);
     }
 
     this._currentRoom!.currentTurnPlayerId = message['newPlayerId'];
-    this._currentRoom!.currentTurnPlayerEndAt = message['newPlayerTurnEndAt'];
+    this._currentRoom!.currentTurnEndAt = message['newPlayerTurnEndAt'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handlePlayerDisplayNameChangedMessage(message: any) {
@@ -184,6 +224,7 @@ export class SkyjoGameService {
       throw new Error('Unknown player');
 
     correspondingPlayer.playerDisplayName = message['newDisplayName'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handlePlayerJoinedMessage(message: any) {
@@ -195,23 +236,27 @@ export class SkyjoGameService {
     });
 
     this._currentRoom?.members.push(newPlayer);
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handlePlayerLeaveMessage(message: any) {
     this._currentRoom!.members = this._currentRoom!.members.filter(member => member.playerId !== message['playerId']);
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleRoomNameChangedMessage(message: any) {
     this._currentRoom!.displayName = message['newDisplayName'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleRoomOwnerChanged(message: any) {
     this._currentRoom!.ownerId = message['newOwnerId'];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleSelectingCardsPhaseMessage(message: any) {
-    this._currentRoom!.status = SkyjoRoomViewModelStatus.SELECTING_CARDS_PHASE;
-    this._gameStatus = 'selecting-cards';
+    this._currentRoom!.status = SkyjoRoomViewModelStatus.SELECTING_CARDS;
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   private _handleSetPlayerCardMessage(message: any) {
@@ -226,8 +271,15 @@ export class SkyjoGameService {
     if (!member)
       throw new Error('Member not found');
 
+    while (member.board.length < cardIndex)
+      member.board.push(-10);
+
     member.board[cardIndex] = cardValue;
     member.board = [...member.board];
+    this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
+
+    if (this._currentRoom.status === SkyjoRoomViewModelStatus.SELECTING_CARDS && this._currentPlayer?.id === playerId)
+      this._waitForServerResponse = false;
   }
   //#endregion
 }

@@ -16,10 +16,10 @@ public class SkyjoRoomBusinessModel {
     private String secretCode;
     private UUID ownerId;
 
-    private int currentTurn;
+    private int currentRound;
     private UUID currentTurnPlayerId;
-    private long currentTurnPlayerEndAt;
-    private ESkyjoGameActionTypeBusinessModel lastAction;
+    private long currentTurnEndAt;
+    private ESkyjoGameActionTypeBusinessModel currentTurnLastAction;
 
     private long gameBeginAt;
     private ESkyjoRoomStatusBusinessModel status;
@@ -37,10 +37,10 @@ public class SkyjoRoomBusinessModel {
             setSecretCode(SkyjoRoomBusinessModel.this.getSecretCode());
             setOwnerId(SkyjoRoomBusinessModel.this.getOwnerId());
 
-            setCurrentTurn(SkyjoRoomBusinessModel.this.getCurrentTurn());
+            setCurrentRound(SkyjoRoomBusinessModel.this.getCurrentRound());
             setCurrentTurnPlayerId(SkyjoRoomBusinessModel.this.getCurrentTurnPlayerId());
-            setCurrentTurnPlayerEndAt(SkyjoRoomBusinessModel.this.getCurrentTurnPlayerEndAt());
-            setLastAction(SkyjoRoomBusinessModel.this.getLastAction() != null ? SkyjoRoomBusinessModel.this.getLastAction().toDataModel() : null);
+            setCurrentTurnEndAt(SkyjoRoomBusinessModel.this.getCurrentTurnEndAt());
+            setCurrentTurnLastAction(SkyjoRoomBusinessModel.this.getCurrentTurnLastAction() != null ? SkyjoRoomBusinessModel.this.getCurrentTurnLastAction().toDataModel() : null);
 
             setGameBeginAt(SkyjoRoomBusinessModel.this.getGameBeginAt());
             setStatus(SkyjoRoomBusinessModel.this.getStatus().toDataModel());
@@ -58,10 +58,10 @@ public class SkyjoRoomBusinessModel {
             setSecretCode(dataModel.getSecretCode());
             setOwnerId(dataModel.getOwnerId());
 
-            setCurrentTurn(dataModel.getCurrentTurn());
+            setCurrentRound(dataModel.getCurrentRound());
             setCurrentTurnPlayerId(dataModel.getCurrentTurnPlayerId());
-            setCurrentTurnPlayerEndAt(dataModel.getCurrentTurnPlayerEndAt());
-            setLastAction(dataModel.getLastAction() != null ? ESkyjoGameActionTypeBusinessModel.fromDataModel(dataModel.getLastAction()) : null);
+            setCurrentTurnEndAt(dataModel.getCurrentTurnEndAt());
+            setCurrentTurnLastAction(dataModel.getCurrentTurnLastAction() != null ? ESkyjoGameActionTypeBusinessModel.fromDataModel(dataModel.getCurrentTurnLastAction()) : null);
 
             setGameBeginAt(dataModel.getGameBeginAt());
             setStatus(ESkyjoRoomStatusBusinessModel.fromDataModel(dataModel.getStatus()));

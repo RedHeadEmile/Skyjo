@@ -27,10 +27,10 @@ public class SkyjoRoomViewModel {
     private UUID ownerId;
 
     @NotNull
-    private int currentTurn;
+    private int currentRound;
     private UUID currentTurnPlayerId;
     @NotNull
-    private long currentTurnPlayerEndAt;
+    private long currentTurnEndAt;
 
     @NotNull
     private long gameBeginAt;
@@ -50,9 +50,9 @@ public class SkyjoRoomViewModel {
             setSecretCode(businessModel.getSecretCode());
             setOwnerId(businessModel.getOwnerId());
 
-            setCurrentTurn(businessModel.getCurrentTurn());
+            setCurrentRound(businessModel.getCurrentRound());
             setCurrentTurnPlayerId(businessModel.getCurrentTurnPlayerId());
-            setCurrentTurnPlayerEndAt(businessModel.getCurrentTurnPlayerEndAt());
+            setCurrentTurnEndAt(businessModel.getCurrentTurnEndAt());
 
             setGameBeginAt(businessModel.getGameBeginAt());
             setStatus(ESkyjoRoomStatusViewModel.fromBusinessModel(businessModel.getStatus()));

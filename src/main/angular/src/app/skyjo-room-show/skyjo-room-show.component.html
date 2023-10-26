@@ -13,15 +13,15 @@
 <div class="other-members">
   <div *ngFor="let member of otherMembers">
     <span>{{ member.playerDisplayName }}</span>
-    <app-skyjo-board clickAction="none" [cards]="member.board" />
+    <skyjo-board clickAction="none" [cards]="member.board" />
   </div>
 </div>
 <span>La pioche:</span>
-<div class="deck" [class.click-disabled]="!iCanPick" [class.click-enabled]="iCanPick">
-  <span>?</span>
-  <span>{{ lastDiscardedCardValue }}</span>
+<div class="deck">
+  <span [class.click-disabled]="!iCanPickTopDeckCard" [class.click-enabled]="iCanPickTopDeckCard">{{ topDeckCard }}</span>
+  <span [class.click-disabled]="!iCanPickDiscardedCard" [class.click-enabled]="iCanPickDiscardedCard">{{ lastDiscardedCardValue }}</span>
 </div>
 <span>Mon jeu:</span>
 <div class="me">
-  <app-skyjo-board [clickAction]="iCanPlay ? 'allowed' : 'disallowed'" (onCardClicked)="onCardClicked($event)" [cards]="myCards" />
+  <skyjo-board [clickAction]="iCanPickMyCards ? 'allowed' : 'disallowed'" (onCardClicked)="onCardClicked($event)" [cards]="myCards" />
 </div>

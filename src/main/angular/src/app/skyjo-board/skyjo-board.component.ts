@@ -1,8 +1,8 @@
 import {Component, EventEmitter, Input, Output} from '@angular/core';
-import {SkyjoGameService} from "../../services/skyjo-game.service";
+import {SkyjoService} from "../../services/skyjo.service";
 
 @Component({
-  selector: 'app-skyjo-board',
+  selector: 'skyjo-board',
   templateUrl: './skyjo-board.component.html',
   styleUrls: ['./skyjo-board.component.scss']
 })
@@ -12,9 +12,17 @@ export class SkyjoBoardComponent {
 
   @Output() onCardClicked: EventEmitter<number> = new EventEmitter<number>();
 
+  isClickAllowed(cardIndex: number) {
+    return this.getCardValue(cardIndex) !== '' && this.clickAction === 'allowed';
+  }
+
+  isClickDisallowed() {
+    return this.clickAction === 'disallowed';
+  }
+
   isCardDeleted(cardIndex: number): boolean {
     if (this.cards.length > cardIndex)
-      return this.cards[cardIndex] === SkyjoGameService.DELETED_CARD;
+      return this.cards[cardIndex] === SkyjoService.DELETED_CARD;
     return false;
   }
 

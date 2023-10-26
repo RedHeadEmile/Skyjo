@@ -3,8 +3,8 @@ import { BrowserModule } from '@angular/platform-browser';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
-import { RoomIndexComponent } from './room-index/room-index.component';
-import { RoomShowComponent } from './room-show/room-show.component';
+import { RoomIndexComponent } from './skyjo-room-index/room-index.component';
+import { SkyjoRoomShowComponent } from './skyjo-room-show/skyjo-room-show.component';
 import {SettingsService} from "../services/settings.service";
 import {API_BASE_URL} from "../services/api.service";
 import {HttpClientModule} from "@angular/common/http";
@@ -15,7 +15,7 @@ import { SkyjoBoardComponent } from './skyjo-board/skyjo-board.component';
   declarations: [
     AppComponent,
     RoomIndexComponent,
-    RoomShowComponent,
+    SkyjoRoomShowComponent,
     SkyjoBoardComponent
   ],
   imports: [
