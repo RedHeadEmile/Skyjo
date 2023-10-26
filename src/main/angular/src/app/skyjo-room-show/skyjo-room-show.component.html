@@ -1,3 +1,5 @@
+<a (click)="leave()">Quitter la room</a>
+
 <div>
   <div class="room-title">
     <ng-container *ngIf="iAmTheOwner">
@@ -9,6 +11,16 @@
     </ng-container>
   </div>
 </div>
+
+<h1 *ngIf="isStatusSelectingCards">Vous devez retourner 2 cartes!</h1>
+<h1 *ngIf="isStatusTurnInProgress">Au tour de {{ currentTurnPlayerName }}</h1>
+<h1 *ngIf="isStatusWaitingForPlayers">
+  En attente des joueurs
+  <ng-container *ngIf="countdownBeforeStart">
+    , démarrage dans {{countdownBeforeStart}}s
+  </ng-container>
+</h1>
+
 <span>Les autres joueurs:</span>
 <div class="other-members">
   <div *ngFor="let member of otherMembers">

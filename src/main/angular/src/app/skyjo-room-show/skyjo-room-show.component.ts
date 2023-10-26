@@ -1,16 +1,29 @@
-import {Component} from '@angular/core';
+import {Component, OnDestroy, OnInit} from '@angular/core';
 import {SkyjoService} from "../../services/skyjo.service";
 import {SkyjoRoomMemberViewModel, SkyjoRoomViewModelStatus} from "../../services/api.service";
+import {Unsubscribable} from "rxjs";
+import {Router} from "@angular/router";
 
 @Component({
   selector: 'skyjo-room-show',
   templateUrl: './skyjo-room-show.component.html',
   styleUrls: ['./skyjo-room-show.component.scss']
 })
-export class SkyjoRoomShowComponent {
+export class SkyjoRoomShowComponent implements OnInit, OnDestroy {
   constructor(
-    private _gameService: SkyjoService
+    private _gameService: SkyjoService,
+    private _router: Router
   ) {
+  }
+
+  private _now: number = 0;
+  private _timeInterval?: any;
+  ngOnInit() {
+    this._timeInterval = setInterval(() => this._now = Date.now(), 100);
+  }
+
+  ngOnDestroy() {
+    clearInterval(this._timeInterval);
   }
 
   //#region GameStatus
@@ -24,6 +37,19 @@ export class SkyjoRoomShowComponent {
 
   get isStatusTurnInProgress(): boolean {
     return this._gameService.currentRoom?.status === SkyjoRoomViewModelStatus.TURN_IN_PROGRESS;
+  }
+
+  get currentTurnPlayerName(): string | undefined {
+    return this._gameService.currentRoom?.members.find(member => member.playerId === this._gameService.currentRoom?.currentTurnPlayerId)?.playerDisplayName;
+  }
+  //#endregion
+
+  //#region Countdown
+  get countdownBeforeStart(): number | undefined {
+    if (!this._gameService.currentRoom?.gameBeginAt)
+      return undefined;
+
+    return Math.max(0, this._gameService.currentRoom.gameBeginAt - this._now) / 1000;
   }
   //#endregion
 
@@ -51,6 +77,11 @@ export class SkyjoRoomShowComponent {
   }
 
   //#region Me
+  public async leave() {
+    await this._gameService.clearCurrentRoom();
+    await this._router.navigate(['/rooms']);
+  }
+
   get iCanPickTopDeckCard(): boolean {
     return this._gameService.currentRoom?.currentTurnPlayerId === this._gameService.currentPlayer?.id && !this._gameService.currentRoom?.currentDrawnCard;
   }
@@ -77,8 +108,12 @@ export class SkyjoRoomShowComponent {
     else if (this._gameService.currentRoom?.status === SkyjoRoomViewModelStatus.TURN_IN_PROGRESS && this._gameService.currentRoom?.currentTurnPlayerId === this._gameService.currentPlayer?.id) {
       if (!!this._gameService.currentRoom?.currentDrawnCard)
         await this._gameService.keepPickedCard(cardIndex);
-      else
+      else {
+        const myCards = this.myCards;
+        if (myCards.length > cardIndex && (myCards[cardIndex] >= -2 && myCards[cardIndex] <= 12))
+          return;
         await this._gameService.flipACard(cardIndex);
+      }
     }
   }
   //#endregion

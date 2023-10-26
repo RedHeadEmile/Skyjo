@@ -7,11 +7,11 @@ import java.util.UUID;
 
 @Getter
 @Setter
-public class RoomOwnerChangedWebsocketModel extends WebsocketModel {
+public class SetRoomOwnerWebsocketModel extends WebsocketModel {
     private UUID newOwnerId;
 
-    public RoomOwnerChangedWebsocketModel(UUID newOwnerId) {
-        super("roomOwnerChanged");
+    public SetRoomOwnerWebsocketModel(UUID newOwnerId) {
+        super("setRoomOwner");
         this.newOwnerId = newOwnerId;
     }
 }

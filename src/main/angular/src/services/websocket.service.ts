@@ -14,6 +14,17 @@ export class WebsocketService extends RxStomp {
     private readonly _settingsService: SettingsService
   ) {
     super();
+
+    let isConnected: boolean = false;
+    this.connectionState$.subscribe(newCurrentState => {
+      if (newCurrentState === RxStompState.OPEN)
+        isConnected = true;
+      else if (newCurrentState === RxStompState.CLOSED && isConnected) {
+        isConnected = false;
+        console.info("Connection lost :(");
+        //this._connectionLostSubject.next();
+      }
+    })
   }
 
   get connectionLostObservable(): Observable<void> {
@@ -37,13 +48,13 @@ export class WebsocketService extends RxStomp {
       reconnectDelay: 0,
 
       heartbeatIncoming: 0,
-      heartbeatOutgoing: 20000
+      heartbeatOutgoing: 10000
     });
 
     super.activate();
   }
 
-  public async subscribe(destination: string, handler: (message: any) => void): Promise<void> {
+  public async subscribe(destination: string, handler: (message: any) => void): Promise<() => void> {
     await this._init();
 
     if (!!this._stompSubscriptions[destination])
@@ -59,6 +70,11 @@ export class WebsocketService extends RxStomp {
           catch (_) {
             handler(message.body);
           }
-        })
+        });
+
+    return () => {
+      this._stompSubscriptions[destination]?.unsubscribe();
+      delete this._stompSubscriptions[destination];
+    };
   }
 }

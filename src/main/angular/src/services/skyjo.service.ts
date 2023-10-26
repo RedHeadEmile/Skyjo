@@ -10,10 +10,12 @@ import {
   SkyjoRoomViewModel,
   SkyjoRoomViewModelStatus
 } from "./api.service";
-import {lastValueFrom} from "rxjs";
+import {lastValueFrom, Subscription} from "rxjs";
 import {WebsocketService} from "./websocket.service";
+import {Router} from "@angular/router";
 
-export type ServerMessageDiscriminator = 'cardPicked' | 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'roomOwnerChanged' | 'selectingCardsPhase' | 'setPlayerCard';
+export type LocalRoomServerMessageDiscriminator = 'cardPicked' | 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'selectingCardsPhase' | 'setPlayerCard' | 'setRoomOwner';
+export type GlobalRoomServerMessageDiscriminator = 'destroyRoom' | 'newRoom' | 'roomNameChanged';
 
 @Injectable({
   providedIn: 'root'
@@ -27,7 +29,8 @@ export class SkyjoService {
 
   constructor(
     private readonly _apiService: ApiService,
-    private readonly _websocketService: WebsocketService
+    private readonly _websocketService: WebsocketService,
+    private readonly _router: Router
   ) { }
 
   //#region CurrentPlayer
@@ -66,14 +69,40 @@ export class SkyjoService {
 
   //#region CurrentRoom
   private _currentRoom?: SkyjoRoomViewModel;
+  private _currentRoomDestroyer?: () => void;
+  private _connectionLostSubscription?: Subscription;
   public async refreshCurrentRoom(roomId: string): Promise<SkyjoRoomViewModel> {
+    if (!!this._currentRoom)
+      throw new Error('A room is already set');
+
     this._currentRoom = await lastValueFrom(this._apiService.showRoom(roomId));
-    await this._websocketService.subscribe("/topic/rooms/" + this._currentRoom.id, msg => this._serverMessageHandler(msg));
+    this._currentRoomDestroyer = await this._websocketService.subscribe("/topic/rooms/" + this._currentRoom.id, msg => this._serverMessageHandler(msg));
+    this._connectionLostSubscription = this._websocketService.connectionLostObservable.subscribe(() => this._handleConnectionLost());
     return this._currentRoom;
   }
 
-  public clearCurrentRoom() {
+  private async _handleConnectionLost() {
+    if (!this._currentRoom)
+      throw new Error('No current room, what are you subscribed to ?');
+
+    const room = await lastValueFrom(this._apiService.showRoom(this._currentRoom.id));
+    if (!room) {
+      await this.clearCurrentRoom();
+      await this._router.navigate(['/rooms']);
+      return;
+    }
+
+    this._currentRoom = room;
+    this._currentRoomDestroyer = await this._websocketService.subscribe("/topic/rooms/" + this._currentRoom.id, msg => this._serverMessageHandler(msg));
+    this._connectionLostSubscription = this._websocketService.connectionLostObservable.subscribe(() => this._handleConnectionLost());
+  }
+
+  public async clearCurrentRoom() {
+    if (!!this._currentRoomDestroyer)
+      this._currentRoomDestroyer();
+    this._connectionLostSubscription?.unsubscribe();
     this._currentRoom = undefined;
+    await lastValueFrom(this._apiService.deleteCurrentPlayerRoom());
   }
 
   public get currentRoom(): SkyjoRoomViewModel | undefined {
@@ -155,7 +184,7 @@ export class SkyjoService {
     if (!this._currentRoom)
       throw new Error("Unable to handle server message if not in a room");
 
-    switch (message['discriminator'] as ServerMessageDiscriminator) {
+    switch (message['discriminator'] as LocalRoomServerMessageDiscriminator) {
       case 'cardPicked': this._handleCardPickedMessage(message); break;
       case 'gameCountdownStarted': this._handleGameCountdownStartedMessage(message); break;
       case 'gameInterrupted': this._handleGameInterruptedMessage(message); break;
@@ -167,10 +196,10 @@ export class SkyjoService {
       case 'playerJoined': this._handlePlayerJoinedMessage(message); break;
       case 'playerLeave': this._handlePlayerLeaveMessage(message); break;
       case 'roomNameChanged': this._handleRoomNameChangedMessage(message); break;
-      case 'roomOwnerChanged': this._handleRoomOwnerChanged(message); break;
       case 'selectingCardsPhase': this._handleSelectingCardsPhaseMessage(message); break;
       case 'setPlayerCard': this._handleSetPlayerCardMessage(message); break;
-      default: throw new Error('Unkown action: ' + message['discriminator']);
+      case 'setRoomOwner': this._handleSetRoomOwnerMessage(message); break;
+      default: throw new Error('Unknown action: ' + message['discriminator']);
     }
   }
 
@@ -249,7 +278,7 @@ export class SkyjoService {
     this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
-  private _handleRoomOwnerChanged(message: any) {
+  private _handleSetRoomOwnerMessage(message: any) {
     this._currentRoom!.ownerId = message['newOwnerId'];
     this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }

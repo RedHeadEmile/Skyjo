@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 
 import static net.redheademile.skyjo.utils.Mapping.map;
 
@@ -62,6 +61,15 @@ public class SkyjoService implements ISkyjoService {
         this.simpMessagingTemplate = simpMessagingTemplate;
     }
 
+    //#region Websocket
+    private void sendRoomWebsocket(UUID roomId, WebsocketModel payload) {
+        if (roomId == null)
+            simpMessagingTemplate.convertAndSend("/topic/rooms", payload);
+        else
+            simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, payload);
+    }
+    //#endregion
+
     //#region Rooms
     @Override
     public SkyjoRoomBusinessModel addRoom(String displayName) {
@@ -93,7 +101,6 @@ public class SkyjoService implements ISkyjoService {
         newRoom.setOwnerId(me.getId());
         newRoom.setStatus(ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS);
 
-        skyjoRepository.createRoom(newRoom.toDataModel());
         //#endregion
 
         //#region Add currentPlayer to the room
@@ -102,13 +109,17 @@ public class SkyjoService implements ISkyjoService {
         SkyjoRoomMemberBusinessModel member = new SkyjoRoomMemberBusinessModel();
         member.setRoom(newRoom);
         member.setPlayer(me);
+        newRoom.getMembers().add(member);
 
-        skyjoRepository.createRoomMember(member.toDataModel());
         //#endregion
+
+        skyjoRepository.createRoom(newRoom.toDataModel());
+        skyjoRepository.createRoomMember(member.toDataModel());
+        sendRoomWebsocket(null, new NewRoomWebsocketModel(newRoom));
 
         // Start the game engine for this room
         asyncService.runAsync(() -> runGameEngine(newRoom.getId()));
-        
+
         return newRoom;
     }
 
@@ -230,7 +241,7 @@ public class SkyjoService implements ISkyjoService {
 
         SkyjoRoomMemberDataModel member = skyjoRepository.readRoomMember(me.getId());
         if (member != null)
-            simpMessagingTemplate.convertAndSend("/topic/rooms/" + member.getRoomId(), new PlayerDisplayNameChangedWebsocketModel(me.getId(), displayName));
+            sendRoomWebsocket(member.getRoomId(), new PlayerDisplayNameChangedWebsocketModel(me.getId(), displayName));
 
         return me;
     }
@@ -239,19 +250,28 @@ public class SkyjoService implements ISkyjoService {
     public SkyjoRoomBusinessModel addCurrentPlayerToRoom(String roomSecretCode) {
         this.removeCurrentPlayerFromRoom();
 
-        SkyjoRoomDataModel roomDm = skyjoRepository.readRoom(roomSecretCode);
-        if (roomDm == null)
+        SkyjoRoomBusinessModel room = getRoom(roomSecretCode);
+        if (room == null)
             throw new IllegalStateException("Room doesn't exists");
 
-        SkyjoRoomBusinessModel room = SkyjoRoomBusinessModel.fromDataModel(roomDm);
         SkyjoPlayerBusinessModel me = getCurrentPlayer();
+
+        if (room.getStatus() != ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS)
+            throw new IllegalStateException("You cannot join a started room");
 
         SkyjoRoomMemberBusinessModel member = new SkyjoRoomMemberBusinessModel();
         member.setRoom(room);
         member.setPlayer(me);
 
         skyjoRepository.createRoomMember(member.toDataModel());
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new PlayerJoinedWebsocketModel(me.getId(), me.getDisplayName()));
+        sendRoomWebsocket(room.getId(), new PlayerJoinedWebsocketModel(me.getId(), me.getDisplayName()));
+
+        // Try to start the game if there is enough players
+        if (room.getMembers().size() + 1 >= 2 && room.getGameBeginAt() == 0) {
+            room.setGameBeginAt(System.currentTimeMillis() + COUNTDOWN_BEFORE_START);
+            skyjoRepository.updateRoom(room.toDataModel());
+            sendRoomWebsocket(room.getId(), new GameCountdownStartedWebsocketModel(room.getGameBeginAt()));
+        }
 
         return room;
     }
@@ -264,8 +284,40 @@ public class SkyjoService implements ISkyjoService {
         if (member == null)
             return;
 
+        SkyjoRoomBusinessModel room = getRoom(member.getRoomId());
+        if (room.getStatus() != ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS)
+            throw new IllegalStateException("You cannot leave a started game");
+
         skyjoRepository.deleteRoomMember(member.getRoomId(), member.getPlayerId());
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + member.getRoomId(), new PlayerLeaveWebsocketModel(me.getId()));
+        sendRoomWebsocket(member.getRoomId(), new PlayerLeaveWebsocketModel(me.getId()));
+
+        // Delete the room if empty
+        if (room.getMembers().size() - 1 == 0) {
+            skyjoRepository.deleteRoom(member.getRoomId());
+            sendRoomWebsocket(member.getRoomId(), new GameInterruptedWebsocketModel());
+            sendRoomWebsocket(null, new DestroyRoomWebsocketModel(member.getRoomId()));
+        }
+        else {
+            // Stop the countdown if not enough players
+            if (room.getMembers().size() - 1 < 2 && room.getGameBeginAt() > 0) {
+                room.setGameBeginAt(0);
+                skyjoRepository.updateRoom(room.toDataModel());
+                sendRoomWebsocket(room.getId(), new GameCountdownStartedWebsocketModel(room.getGameBeginAt()));
+            }
+
+            // Need to redefine an owner (first should be the older)
+            if (me.getId().equals(room.getOwnerId())) {
+                room.setMembers(room.getMembers().stream().filter(m -> !m.getPlayer().getId().equals(me.getId())).toList());
+                SkyjoRoomMemberBusinessModel newOwner = room.getMembers().stream().findFirst().orElse(null);
+                if (newOwner == null)
+                    throw new IllegalStateException("It can't be...");
+
+                room.setOwnerId(newOwner.getPlayer().getId());
+
+                skyjoRepository.updateRoom(room.toDataModel());
+                sendRoomWebsocket(room.getId(), new SetRoomOwnerWebsocketModel(newOwner.getPlayer().getId()));
+            }
+        }
     }
 
     @Override
@@ -283,7 +335,10 @@ public class SkyjoService implements ISkyjoService {
 
         room.setDisplayName(displayName);
         skyjoRepository.updateRoom(room.toDataModel());
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new RoomNameChangedWebsocketModel(displayName));
+
+        WebsocketModel websocketPayload = new RoomNameChangedWebsocketModel(room.getId(), displayName);
+        sendRoomWebsocket(null, websocketPayload);
+        sendRoomWebsocket(room.getId(), websocketPayload);
     }
 
     //#region PlayerActionHandlers
@@ -296,7 +351,7 @@ public class SkyjoService implements ISkyjoService {
         room.setCurrentTurnLastAction(ESkyjoGameActionTypeBusinessModel.DRAW_A_CARD);
 
         skyjoRepository.updateRoom(room.toDataModel());
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(topCard));
+        sendRoomWebsocket(room.getId(), new NewCurrentDrawnCardWebsocketModel(topCard));
     }
 
     private void handlePlayerActionExchangeWithPickedCard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
@@ -327,9 +382,9 @@ public class SkyjoService implements ISkyjoService {
         // Room will be updated in #nextPlayerTurn()
         skyjoRepository.updateRoomMember(me.toDataModel());
 
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(cardToDiscard));
+        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
+        sendRoomWebsocket(room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
+        sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(cardToDiscard));
 
         nextPlayerTurn(room, false);
     }
@@ -344,8 +399,8 @@ public class SkyjoService implements ISkyjoService {
         room.setLastDiscardedCard(room.getCurrentDrawnCard());
         room.setCurrentDrawnCard(null);
 
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
+        sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+        sendRoomWebsocket(room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
 
         nextPlayerTurn(room, false);
     }
@@ -375,8 +430,8 @@ public class SkyjoService implements ISkyjoService {
         // Room will be updated in #nextPlayerTurn()
         skyjoRepository.updateRoomMember(me.toDataModel());
 
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
+        sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
 
         nextPlayerTurn(room, false);
     }
@@ -402,10 +457,53 @@ public class SkyjoService implements ISkyjoService {
 
         skyjoRepository.updateRoomMember(me.toDataModel());
 
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), me.getRealBoard().get(action.getCardIndex())));
+        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), me.getRealBoard().get(action.getCardIndex())));
 
         if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS)
             nextPlayerTurn(room, false);
+
+        else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.SELECTING_CARDS) {
+            boolean letsStartTheFirstTurn = true;
+
+            int bestTotalCardsValue = Integer.MIN_VALUE;
+            List<UUID> playersWithBestTotalCardsValue = new ArrayList<>();
+
+            for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
+                int shownCards = 0;
+                int totalCardsValue = 0;
+                for (int cardIndex = 0; cardIndex < 12; cardIndex++) {
+                    if (member.getShownBoard()[cardIndex]) {
+                        shownCards++;
+                        totalCardsValue += member.getRealBoard().get(cardIndex);
+                    }
+                }
+
+                if (shownCards < 2) {
+                    letsStartTheFirstTurn = false;
+                    break;
+                }
+
+                if (totalCardsValue > bestTotalCardsValue) {
+                    bestTotalCardsValue = totalCardsValue;
+                    playersWithBestTotalCardsValue.clear();
+                    playersWithBestTotalCardsValue.add(member.getPlayer().getId());
+                }
+                else if (totalCardsValue == bestTotalCardsValue) {
+                    playersWithBestTotalCardsValue.add(member.getPlayer().getId());
+                }
+            }
+
+            if (letsStartTheFirstTurn) {
+                room.setStatus(ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS);
+
+                UUID chosenPlayerId = playersWithBestTotalCardsValue.get((int) (Math.random() * playersWithBestTotalCardsValue.size()));
+                room.setCurrentTurnPlayerId(chosenPlayerId);
+                room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
+
+                skyjoRepository.updateRoom(room.toDataModel());
+                sendRoomWebsocket(room.getId(), new NewPlayerTurnWebsocketModel(chosenPlayerId, room.getCurrentTurnEndAt(), false));
+            }
+        }
     }
     //#endregion
 
@@ -434,8 +532,26 @@ public class SkyjoService implements ISkyjoService {
 
     //#region GameEngine
     private static final long COUNTDOWN_BEFORE_START = 10_000;
-    private static final long TIME_BETWEEN_GAME_START_AND_PLAYER_TURN = 5_000;
     private static final long TIME_PER_PLAYER = 30_000;
+
+    private List<Integer> generateRandomDeck() {
+        List<Integer> cards = new ArrayList<>();
+        for (int i = 0; i < 15; ++i) {
+            for (int cardNumber = -2; cardNumber <= 12; ++cardNumber)
+                if (
+                        (cardNumber == 0) || // 15 cards of 0
+                                (cardNumber == -2 && i < 5) || // 5 cards of -2
+                                ((cardNumber == -1 || cardNumber >= 1) && i < 10) // 10 cards of -1 and [1; 12]
+                )
+                    cards.add(cardNumber);
+        }
+
+        if (cards.size() != 150)
+            throw new IllegalStateException("Invalid amount of cards after generation");
+
+        Collections.shuffle(cards);
+        return cards;
+    }
 
     private void nextPlayerTurn(SkyjoRoomBusinessModel room, boolean timeoutPreviousPlayer) {
         int currentPlayerIndex = -1;
@@ -475,9 +591,9 @@ public class SkyjoService implements ISkyjoService {
                         member.getRealBoard().set(columnIndexes[2], DELETED_CARD);
 
                         skyjoRepository.updateRoomMember(member.toDataModel());
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[0], DELETED_CARD));
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[1], DELETED_CARD));
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[2], DELETED_CARD));
+                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[0], DELETED_CARD));
+                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[1], DELETED_CARD));
+                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[2], DELETED_CARD));
                     }
                 }
                 //#endregion
@@ -489,16 +605,19 @@ public class SkyjoService implements ISkyjoService {
             throw new IllegalStateException("Player not member of the room anymore");
 
         if (room.getCurrentDrawnCard() != null) {
+            if (!timeoutPreviousPlayer)
+                throw new IllegalStateException("Why is there a drawn card ???");
+
             room.setLastDiscardedCard(room.getCurrentDrawnCard());
             room.setCurrentDrawnCard(null);
 
-            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
-            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
+            sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+            sendRoomWebsocket(room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
         }
         else if (timeoutPreviousPlayer) {
             Integer topCard = room.getPristineCards().remove(0);
             room.setLastDiscardedCard(topCard);
-            simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+            sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
         }
 
         int newCurrentPlayerIndex = (currentPlayerIndex + 1) % room.getMembers().size();
@@ -508,131 +627,66 @@ public class SkyjoService implements ISkyjoService {
         room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
 
         skyjoRepository.updateRoom(room.toDataModel());
-        simpMessagingTemplate.convertAndSend("/topic/rooms/" + room.getId(),
-                new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnEndAt(), timeoutPreviousPlayer));
+        sendRoomWebsocket(room.getId(), new NewPlayerTurnWebsocketModel(newPlayerId, room.getCurrentTurnEndAt(), timeoutPreviousPlayer));
     }
 
     private void runGameEngine(UUID roomId) {
         logger.info("Starting daemon for room " + roomId);
-
-        Callable<List<Integer>> generateRandomCards = () -> {
-            List<Integer> cards = new ArrayList<>();
-            for (int i = 0; i < 15; i++) {
-                for (int cardNumber = -2; cardNumber <= 12; cardNumber++)
-                    if (
-                            (cardNumber == 0) || // 15 cards of 0
-                            (cardNumber == -2 && i < 5) || // 5 cards of -2
-                            ((cardNumber == -1 || cardNumber >= 1) && i < 10) // 10 cards of -1 and [1; 12]
-                    )
-                        cards.add(cardNumber);
-            }
-
-            if (cards.size() != 150)
-                throw new IllegalStateException("Invalid amount of cards after generation");
-
-            Collections.shuffle(cards);
-            return cards;
-        };
         
         try {
-            gameLoop: while (true) {
-                SkyjoRoomBusinessModel room = getRoom(roomId);
+            SkyjoRoomBusinessModel room;
 
-                if (room.getMembers().isEmpty()) {
-                    skyjoRepository.deleteRoom(roomId);
-                    simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new GameInterruptedWebsocketModel());
-                    break gameLoop;
-                }
+            do {
+                room = getRoom(roomId);
+                if (room == null)
+                    break;
                 
-                if (room.getStatus() == ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS && room.getMembers().size() >= 2) {
-                    if (room.getGameBeginAt() == 0) {
-                        room.setGameBeginAt(System.currentTimeMillis() + COUNTDOWN_BEFORE_START);
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new GameCountdownStartedWebsocketModel(room.getGameBeginAt()));
-                        skyjoRepository.updateRoom(room.toDataModel());
-                    }
-                    else if (System.currentTimeMillis() >= room.getGameBeginAt()) {
-                        room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS);
-                        room.setCurrentRound(0);
-                        room.setPristineCards(generateRandomCards.call());
+                if (
+                        room.getStatus() == ESkyjoRoomStatusBusinessModel.WAITING_FOR_PLAYERS
+                                && room.getMembers().size() >= 2
+                                && room.getGameBeginAt() > 0
+                                && System.currentTimeMillis() >= room.getGameBeginAt()
+                ) {
+                    room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS);
+                    room.setCurrentRound(0);
+                    room.setPristineCards(generateRandomDeck());
 
-                        for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
-                            List<Integer> cards = room.getPristineCards().subList(0, 12);
-                            member.setRealBoard(new ArrayList<>(cards));
-                            cards.clear();
-
-                            skyjoRepository.updateRoomMember(member.toDataModel());
-                        }
-
-                        Integer topCard = room.getPristineCards().remove(0);
-                        room.setLastDiscardedCard(topCard);
-
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new SelectingCardsPhaseWebsocketModel());
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
-
-                        skyjoRepository.updateRoom(room.toDataModel());
-                        logger.info("Skyjo started for room " + roomId);
-                        Thread.sleep(TIME_BETWEEN_GAME_START_AND_PLAYER_TURN);
-                    }
-                }
-
-                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.SELECTING_CARDS) {
-                    boolean letsGo = true;
-
-                    int bestCardsValue = 0;
-                    List<UUID> playersWithBestCardsValue = new ArrayList<>();
-
+                    // Distribution of cards
                     for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
-                        int trueValues = 0;
-                        int cardsValue = 0;
-                        for (int i = 0; i < 12; i++) {
-                            if (member.getShownBoard()[i]) {
-                                trueValues++;
-                                cardsValue += member.getRealBoard().get(i);
-                            }
-                        }
+                        List<Integer> cards = room.getPristineCards().subList(0, 12);
+                        member.setRealBoard(new ArrayList<>(cards));
+                        cards.clear();
 
-                        if (trueValues < 2) {
-                            letsGo = false;
-                            break;
-                        }
-
-                        if (cardsValue > bestCardsValue) {
-                            bestCardsValue = cardsValue;
-                            playersWithBestCardsValue.clear();
-                            playersWithBestCardsValue.add(member.getPlayer().getId());
-                        }
-                        else if (cardsValue == bestCardsValue) {
-                            playersWithBestCardsValue.add(member.getPlayer().getId());
-                        }
+                        skyjoRepository.updateRoomMember(member.toDataModel());
                     }
 
-                    if (letsGo) {
-                        room.setStatus(ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS);
+                    // Pick the first card
+                    Integer topCard = room.getPristineCards().remove(0);
+                    room.setLastDiscardedCard(topCard);
 
-                        UUID chosen = playersWithBestCardsValue.get((int) (Math.random() * playersWithBestCardsValue.size()));
-                        room.setCurrentTurnPlayerId(chosen);
-                        room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
+                    sendRoomWebsocket(roomId, new SelectingCardsPhaseWebsocketModel());
+                    sendRoomWebsocket(roomId, new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
 
-                        skyjoRepository.updateRoom(room.toDataModel());
-                        simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId,
-                                new NewPlayerTurnWebsocketModel(chosen, room.getCurrentTurnEndAt(), false));
-                    }
+                    skyjoRepository.updateRoom(room.toDataModel());
+                    logger.info("Skyjo started for room " + roomId);
                 }
 
-                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS) {
-                    if (room.getCurrentTurnEndAt() > System.currentTimeMillis()) {
-                        //nextPlayerTurn(room, true);
-                    }
-                }
+                // Player turn timed out
+                else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS && room.getCurrentTurnEndAt() > System.currentTimeMillis())
+                    nextPlayerTurn(room, true);
 
                 Thread.sleep(1000);
             }
+            while(room.getStatus() != ESkyjoRoomStatusBusinessModel.INTERRUPTED
+                    && room.getStatus() != ESkyjoRoomStatusBusinessModel.CRASHED
+                    && room.getStatus() != ESkyjoRoomStatusBusinessModel.FINISHED);
         }
         catch (Exception e) {
             skyjoRepository.readRoomMembers(roomId).forEach(member -> skyjoRepository.deleteRoomMember(roomId, member.getPlayerId()));
             skyjoRepository.deleteRoom(roomId);
 
-            simpMessagingTemplate.convertAndSend("/topic/rooms/" + roomId, new InternalErrorWebsocketModel());
+            sendRoomWebsocket(roomId, new InternalErrorWebsocketModel());
+            sendRoomWebsocket(null, new DestroyRoomWebsocketModel(roomId));
             throw new RuntimeException(e);
         }
         finally {
