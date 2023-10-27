@@ -23,6 +23,6 @@ public interface ISkyjoService {
 
     void setCurrentPlayerRoomDisplayName(String displayName);
 
-    void currentPlayerPlayAction(SkyjoGameActionBusinessModel action);
+    void addCurrentPlayerGameAction(SkyjoGameActionBusinessModel action);
     //#endregion
 }

@@ -1,12 +1,14 @@
 :host {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr 1fr;
-  gap: 1em;
+  grid-template-columns: repeat(4, min-content);
+  grid-template-rows: repeat(3, min-content);
 }
 
 .card {
+  width: 2rem;
+
   border: 1px solid black;
+  margin: .5em;
   padding: .2rem;
 
   display: flex;
@@ -25,5 +27,7 @@
     cursor: none;
     border: 0;
     padding: 0;
+    margin: 0;
+    width: 0;
   }
 }

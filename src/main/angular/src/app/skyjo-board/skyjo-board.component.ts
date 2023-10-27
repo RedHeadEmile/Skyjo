@@ -8,34 +8,34 @@ import {SkyjoService} from "../../services/skyjo.service";
 })
 export class SkyjoBoardComponent {
   @Input() cards: number[] = [];
-  @Input() clickAction: 'none' | 'disallowed' | 'allowed' = 'none';
+  @Input() clickableCards?: boolean[] = [];
 
   @Output() onCardClicked: EventEmitter<number> = new EventEmitter<number>();
 
   isClickAllowed(cardIndex: number) {
-    return this.getCardValue(cardIndex) !== '' && this.clickAction === 'allowed';
+    return !!this.clickableCards && this.clickableCards[cardIndex];
   }
 
-  isClickDisallowed() {
-    return this.clickAction === 'disallowed';
+  isClickDisallowed(cardIndex: number) {
+    return !!this.clickableCards && !this.clickableCards[cardIndex];
   }
 
   isCardDeleted(cardIndex: number): boolean {
     if (this.cards.length > cardIndex)
-      return this.cards[cardIndex] === SkyjoService.DELETED_CARD;
+      return SkyjoService.getCardStatus(this.cards[cardIndex]) === 'deleted';
     return false;
   }
 
   getCardValue(cardIndex: number): string {
-    if (this.isCardDeleted(cardIndex))
-      return '';
+    if (this.cards.length <= cardIndex)
+      return '?';
 
-    if (this.cards.length > cardIndex) {
-      const value = this.cards[cardIndex];
-      if (value < -2 || value > 12)
-        return '?';
-      return value.toString();
+    switch (SkyjoService.getCardStatus(this.cards[cardIndex])) {
+      case 'deleted': return '';
+      case 'hidden': return '?';
+      case 'shown': return this.cards[cardIndex].toString();
+
+      default: return '-';
     }
-    return '?';
   }
 }

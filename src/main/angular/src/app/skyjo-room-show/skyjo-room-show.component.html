@@ -13,7 +13,11 @@
 </div>
 
 <h1 *ngIf="isStatusSelectingCards">Vous devez retourner 2 cartes!</h1>
-<h1 *ngIf="isStatusTurnInProgress">Au tour de {{ currentTurnPlayerName }}</h1>
+
+<h1 *ngIf="isStatusTurnInProgress">
+  Au tour de {{ currentTurnPlayerName }} ({{ currentTurnRemainingTime }}s)
+</h1>
+
 <h1 *ngIf="isStatusWaitingForPlayers">
   En attente des joueurs
   <ng-container *ngIf="countdownBeforeStart">
@@ -23,17 +27,26 @@
 
 <span>Les autres joueurs:</span>
 <div class="other-members">
-  <div *ngFor="let member of otherMembers">
+  <div *ngFor="let member of roomMembersWithoutMe">
     <span>{{ member.playerDisplayName }}</span>
-    <skyjo-board clickAction="none" [cards]="member.board" />
+    <skyjo-board [cards]="member.board" />
   </div>
 </div>
 <span>La pioche:</span>
 <div class="deck">
-  <span [class.click-disabled]="!iCanPickTopDeckCard" [class.click-enabled]="iCanPickTopDeckCard">{{ topDeckCard }}</span>
-  <span [class.click-disabled]="!iCanPickDiscardedCard" [class.click-enabled]="iCanPickDiscardedCard">{{ lastDiscardedCardValue }}</span>
+  <span [class.click-disabled]="!iCanPickTopDeckCard"
+        [class.click-enabled]="iCanPickTopDeckCard"
+        (click)="onTopDeckCardClicked()">
+    {{ topDeckCard }}
+  </span>
+
+  <span [class.click-disabled]="!iCanPickDiscardedCard"
+        [class.click-enabled]="iCanPickDiscardedCard"
+        (click)="onDiscardedCardClicked()">
+    {{ lastDiscardedCard }}
+  </span>
 </div>
 <span>Mon jeu:</span>
 <div class="me">
-  <skyjo-board [clickAction]="iCanPickMyCards ? 'allowed' : 'disallowed'" (onCardClicked)="onCardClicked($event)" [cards]="myCards" />
+  <skyjo-board [clickableCards]="pickableCardsForMe" (onCardClicked)="onMyCardClicked($event)" [cards]="myCards" />
 </div>
