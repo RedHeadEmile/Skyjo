@@ -36,12 +36,14 @@
 <div class="deck">
   <span [class.click-disabled]="!iCanPickTopDeckCard"
         [class.click-enabled]="iCanPickTopDeckCard"
+        class="card"
         (click)="onTopDeckCardClicked()">
     {{ topDeckCard }}
   </span>
 
   <span [class.click-disabled]="!iCanPickDiscardedCard"
         [class.click-enabled]="iCanPickDiscardedCard"
+        class="card"
         (click)="onDiscardedCardClicked()">
     {{ lastDiscardedCard }}
   </span>

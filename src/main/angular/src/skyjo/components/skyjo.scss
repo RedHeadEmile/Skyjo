@@ -1,11 +1,6 @@
-:host {
-  display: grid;
-  grid-template-columns: repeat(4, min-content);
-  grid-template-rows: repeat(3, min-content);
-}
-
 .card {
   width: 2rem;
+  position: relative;
 
   border: 1px solid black;
   margin: .5em;
@@ -21,6 +16,19 @@
 
   &.click-enabled {
     cursor: pointer;
+
+    &::before {
+      position: absolute;
+      top: -.25rem;
+      left: -.25rem;
+      right: -.25rem;
+      bottom: -.25rem;
+
+      background-color: rgba(9, 182, 9, 0.5);
+      content: '';
+
+      z-index: -1;
+    }
   }
 
   &.deleted {

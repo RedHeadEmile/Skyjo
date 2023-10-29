@@ -1,5 +1,5 @@
 import {Component, OnInit} from '@angular/core';
-import {SkyjoService} from "../services/skyjo.service";
+import {SkyjoService} from "../skyjo/services/skyjo.service";
 
 @Component({
   selector: 'app-root',

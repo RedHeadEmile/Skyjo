@@ -32,23 +32,6 @@
   display: flex;
   justify-content: center;
   gap: 1rem;
-
-  & > span {
-    border: 1px solid black;
-    padding: .2rem;
-
-    display: flex;
-    justify-content: center;
-    align-items: center;
-
-    &.click-disabled {
-      cursor: not-allowed;
-    }
-
-    &.click-enabled {
-      cursor: pointer;
-    }
-  }
 }
 
 .me {

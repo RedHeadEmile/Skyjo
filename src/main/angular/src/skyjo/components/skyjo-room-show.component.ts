@@ -1,12 +1,12 @@
 import {Component, OnDestroy, OnInit} from '@angular/core';
-import {SkyjoService} from "../../services/skyjo.service";
+import {SkyjoService} from "../services/skyjo.service";
 import {SkyjoRoomMemberViewModel, SkyjoRoomViewModelStatus} from "../../services/api.service";
 import {Router} from "@angular/router";
 
 @Component({
   selector: 'skyjo-room-show',
   templateUrl: './skyjo-room-show.component.html',
-  styleUrls: ['./skyjo-room-show.component.scss']
+  styleUrls: ['./skyjo-room-show.component.scss', './skyjo.scss']
 })
 export class SkyjoRoomShowComponent implements OnInit, OnDestroy {
   constructor(

@@ -1,9 +1,9 @@
 import {ActivatedRouteSnapshot, CanActivateFn, Router, RouterStateSnapshot} from "@angular/router";
 import {inject} from "@angular/core";
-import {SkyjoService} from "../services/skyjo.service";
+import {SkyjoService} from "../skyjo/services/skyjo.service";
 
 // Observable<boolean | UrlTree> | Promise<boolean | UrlTree> | boolean | UrlTree
-export const roomGuard: CanActivateFn = (route: ActivatedRouteSnapshot, state: RouterStateSnapshot) => {
+export const skyjoRoomGuard: CanActivateFn = (route: ActivatedRouteSnapshot, state: RouterStateSnapshot) => {
   const roomStateService = inject(SkyjoService);
   const router = inject(Router);
   const roomId = route.params['roomId'];

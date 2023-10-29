@@ -1,8 +1,8 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
-import {RoomIndexComponent} from "./skyjo-room-index/room-index.component";
-import {roomGuard} from "../guards/room.guard";
-import {SkyjoRoomShowComponent} from "./skyjo-room-show/skyjo-room-show.component";
+import {SkyjoRoomIndexComponent} from "../skyjo/components/skyjo-room-index.component";
+import {skyjoRoomGuard} from "../guards/skyjo-room-guard";
+import {SkyjoRoomShowComponent} from "../skyjo/components/skyjo-room-show.component";
 
 const routes: Routes = [
   {
@@ -11,11 +11,11 @@ const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        component: RoomIndexComponent
+        component: SkyjoRoomIndexComponent
       },
       {
         path: ':roomId',
-        canActivate: [roomGuard],
+        canActivate: [skyjoRoomGuard],
         component: SkyjoRoomShowComponent
       }
     ]

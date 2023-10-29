@@ -8,14 +8,14 @@ import {
 import {lastValueFrom} from "rxjs";
 import {Router} from "@angular/router";
 import {WebsocketService} from "../../services/websocket.service";
-import {GlobalRoomServerMessageDiscriminator, SkyjoService} from "../../services/skyjo.service";
+import {GlobalRoomServerMessageDiscriminator, SkyjoService} from "../services/skyjo.service";
 
 @Component({
   selector: 'skyjo-room-index',
-  templateUrl: './room-index.component.html',
-  styleUrls: ['./room-index.component.scss']
+  templateUrl: './skyjo-room-index.component.html',
+  styleUrls: ['./skyjo-room-index.component.scss']
 })
-export class RoomIndexComponent implements OnInit, OnDestroy {
+export class SkyjoRoomIndexComponent implements OnInit, OnDestroy {
 
   rooms: SkyjoRoomViewModel[] = [];
   private _roomsObserverDestroyer?: () => void;

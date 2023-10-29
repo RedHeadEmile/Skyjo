@@ -9,9 +9,9 @@ import {
     SkyjoRoomMemberViewModel,
     SkyjoRoomViewModel,
     SkyjoRoomViewModelStatus
-} from "./api.service";
+} from "../../services/api.service";
 import {lastValueFrom, Subject, Subscription} from "rxjs";
-import {WebsocketService} from "./websocket.service";
+import {WebsocketService} from "../../services/websocket.service";
 import {Router} from "@angular/router";
 
 export type LocalRoomServerMessageDiscriminator = 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'selectingCardsPhase' | 'setPlayerCard' | 'setRoomOwner';

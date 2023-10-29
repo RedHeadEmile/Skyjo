@@ -1,10 +1,17 @@
 import {Component, EventEmitter, Input, Output} from '@angular/core';
-import {SkyjoService} from "../../services/skyjo.service";
+import {SkyjoService} from "../services/skyjo.service";
 
 @Component({
   selector: 'skyjo-board',
   templateUrl: './skyjo-board.component.html',
-  styleUrls: ['./skyjo-board.component.scss']
+  styleUrls: ['./skyjo.scss'],
+  styles: [`
+    :host {
+      display: grid;
+      grid-template-columns: repeat(4, min-content);
+      grid-template-rows: repeat(3, min-content);
+    }
+  `]
 })
 export class SkyjoBoardComponent {
   @Input() cards: number[] = [];
