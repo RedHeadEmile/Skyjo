@@ -39,6 +39,7 @@ public class SkyjoService implements ISkyjoService {
 
     private static final String AUTH_COOKIE_NAME = "SkyjoToken";
     private static final Integer DELETED_CARD = -11;
+    private static final Integer UNKNOWN_SCORE = -100;
     private final HttpServletRequest request;
     private final HttpServletResponse response;
 
@@ -385,7 +386,7 @@ public class SkyjoService implements ISkyjoService {
         sendRoomWebsocket(room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
         sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(cardToDiscard));
 
-        nextPlayerTurn(room, false);
+        asyncService.runAsync(() -> nextPlayerTurn(room, false));
     }
 
     private void handlePlayerActionIgnoreDrawnCard(SkyjoRoomBusinessModel room) {
@@ -401,7 +402,7 @@ public class SkyjoService implements ISkyjoService {
         sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
         sendRoomWebsocket(room.getId(), new NewCurrentDrawnCardWebsocketModel(null));
 
-        nextPlayerTurn(room, false);
+        asyncService.runAsync(() -> nextPlayerTurn(room, false));
     }
 
     private void handlePlayerActionExchangeWithDiscardedCard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
@@ -432,7 +433,7 @@ public class SkyjoService implements ISkyjoService {
         sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
         sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), cardToAdd));
 
-        nextPlayerTurn(room, false);
+        asyncService.runAsync(() -> nextPlayerTurn(room, false));
     }
 
     private void handlePlayerActionFlipACard(SkyjoGameActionBusinessModel action, SkyjoRoomBusinessModel room) {
@@ -469,7 +470,7 @@ public class SkyjoService implements ISkyjoService {
         sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(myId, action.getCardIndex(), me.getRealBoard().get(action.getCardIndex())));
 
         if (room.getStatus() == ESkyjoRoomStatusBusinessModel.TURN_IN_PROGRESS)
-            nextPlayerTurn(room, false);
+            asyncService.runAsync(() -> nextPlayerTurn(room, false));
 
         else if (room.getStatus() == ESkyjoRoomStatusBusinessModel.SELECTING_CARDS) {
             boolean letsStartTheFirstTurn = true;
@@ -565,50 +566,74 @@ public class SkyjoService implements ISkyjoService {
         return cards;
     }
 
-    private void nextPlayerTurn(SkyjoRoomBusinessModel room, boolean timeoutPreviousPlayer) {
+    private void startNewRound(int newRoundNumber, SkyjoRoomBusinessModel room) {
+        room.setCurrentRound(newRoundNumber);
+        room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS);
+        room.setPristineCards(generateRandomDeck());
+
+        // Cards distribution
+        for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
+            List<Integer> cards = room.getPristineCards().subList(0, 12);
+            member.setShownBoard(new boolean[12]);
+            member.setRealBoard(new ArrayList<>(cards));
+            cards.clear();
+
+            skyjoRepository.updateRoomMember(member.toDataModel());
+        }
+
+        // Draw the first card
+        Integer topCard = room.getPristineCards().remove(0);
+        room.setLastDiscardedCard(topCard);
+
+        sendRoomWebsocket(room.getId(), new SelectingCardsPhaseWebsocketModel(newRoundNumber));
+        sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+    }
+
+    private void removeFullColumns(UUID roomId, SkyjoRoomMemberBusinessModel member) {
+        int[][] columnsIndexes = {
+                {0, 4, 8},
+                {1, 5, 9},
+                {2, 6, 10},
+                {3, 7, 11}
+        };
+
+        for (int[] columnIndexes : columnsIndexes) {
+            // Check that all cards fo the column are shown
+            if (!member.getShownBoard()[columnIndexes[0]]
+                    || !member.getShownBoard()[columnIndexes[1]]
+                    || !member.getShownBoard()[columnIndexes[2]])
+                continue;
+
+            int value1 = member.getRealBoard().get(columnIndexes[0]);
+            int value2 = member.getRealBoard().get(columnIndexes[1]);
+            int value3 = member.getRealBoard().get(columnIndexes[2]);
+
+            // Ignore already deleted column
+            if (value1 == DELETED_CARD)
+                continue;
+
+            // If all the cards of the column are the same, delete them
+            if (value1 == value2 && value2 == value3) {
+                member.getRealBoard().set(columnIndexes[0], DELETED_CARD);
+                member.getRealBoard().set(columnIndexes[1], DELETED_CARD);
+                member.getRealBoard().set(columnIndexes[2], DELETED_CARD);
+
+                skyjoRepository.updateRoomMember(member.toDataModel());
+                sendRoomWebsocket(roomId, new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[0], DELETED_CARD));
+                sendRoomWebsocket(roomId, new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[1], DELETED_CARD));
+                sendRoomWebsocket(roomId, new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[2], DELETED_CARD));
+                sendRoomWebsocket(roomId, new NewDiscardedCardWebsocketModel(value1));
+            }
+        }
+    }
+
+    private void nextPlayerTurn(SkyjoRoomBusinessModel room, boolean timeoutPreviousPlayer) throws InterruptedException {
         int currentMemberIndex = -1;
         for (int i = 0; i < room.getMembers().size(); i++) {
             SkyjoRoomMemberBusinessModel member = room.getMembers().get(i);
             if (member.getPlayer().getId().equals(room.getCurrentTurnPlayerId())) {
                 currentMemberIndex = i;
-
-                //#region Delete full columns
-                int[][] columnsIndexes = {
-                        {0, 4, 8},
-                        {1, 5, 9},
-                        {2, 6, 10},
-                        {3, 7, 11}
-                };
-
-                for (int[] columnIndexes : columnsIndexes) {
-                    // Check that all cards fo the column are shown
-                    if (!member.getShownBoard()[columnIndexes[0]]
-                            || !member.getShownBoard()[columnIndexes[1]]
-                            || !member.getShownBoard()[columnIndexes[2]])
-                        continue;
-
-                    int value1 = member.getRealBoard().get(columnIndexes[0]);
-                    int value2 = member.getRealBoard().get(columnIndexes[1]);
-                    int value3 = member.getRealBoard().get(columnIndexes[2]);
-
-                    // Ignore already deleted column
-                    if (value1 == DELETED_CARD)
-                        continue;
-
-                    // If all the cards of the column are the same, delete them
-                    if (value1 == value2 && value2 == value3) {
-                        member.getRealBoard().set(columnIndexes[0], DELETED_CARD);
-                        member.getRealBoard().set(columnIndexes[1], DELETED_CARD);
-                        member.getRealBoard().set(columnIndexes[2], DELETED_CARD);
-
-                        skyjoRepository.updateRoomMember(member.toDataModel());
-                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[0], DELETED_CARD));
-                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[1], DELETED_CARD));
-                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), columnIndexes[2], DELETED_CARD));
-                        sendRoomWebsocket(room.getId(), new NewDiscardedCardWebsocketModel(value1));
-                    }
-                }
-                //#endregion
+                removeFullColumns(room.getId(), member);
                 break;
             }
         }
@@ -639,14 +664,74 @@ public class SkyjoService implements ISkyjoService {
         int newCurrentPlayerIndex = (currentMemberIndex + 1) % room.getMembers().size();
         SkyjoRoomMemberBusinessModel newMember = room.getMembers().get(newCurrentPlayerIndex);
 
-        // TODO check if the game is over
+        // Check if the round is over
+        boolean newPlayerHaveAllHisCardsShown = true;
+        for (boolean b : newMember.getShownBoard())
+            if (!b) {
+                newPlayerHaveAllHisCardsShown = false;
+                break;
+            }
+
+        // Round is over
+        if (newPlayerHaveAllHisCardsShown) {
+            // Flip all the remaining cards
+            for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
+                for (int cardIndex = 0; cardIndex < 12; cardIndex++) {
+                    if (!member.getShownBoard()[cardIndex]) {
+                        member.getShownBoard()[cardIndex] = true;
+                        sendRoomWebsocket(room.getId(), new SetPlayerCardWebsocketModel(member.getPlayer().getId(), cardIndex, member.getRealBoard().get(cardIndex)));
+                    }
+                }
+            }
+
+            Thread.sleep(5000);
+
+            // Score calculation
+            boolean gameIsOver = false;
+            for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
+                int totalCardsValue = 0;
+                for (Integer cardValue : member.getRealBoard())
+                    if (cardValue.intValue() != DELETED_CARD.intValue())
+                        totalCardsValue += cardValue;
+
+                if (totalCardsValue >= 100)
+                    gameIsOver = true;
+
+                while (member.getScores().size() < room.getCurrentRound()) {
+                    member.getScores().add(UNKNOWN_SCORE);
+                    sendRoomWebsocket(room.getId(), new SetPlayerScoreWebsocketModel(member.getPlayer().getId(), member.getScores().size() - 1, null));
+                }
+
+                member.getScores().add(totalCardsValue);
+                sendRoomWebsocket(room.getId(), new SetPlayerScoreWebsocketModel(member.getPlayer().getId(), room.getCurrentRound(), totalCardsValue));
+                Thread.sleep(500);
+
+                removeFullColumns(room.getId(), member);
+
+                skyjoRepository.updateRoomMember(member.toDataModel());
+            }
+
+            if (gameIsOver) {
+                room.setStatus(ESkyjoRoomStatusBusinessModel.FINISHED);
+                sendRoomWebsocket(room.getId(), new GameFinishedWebsocketModel(null));
+            }
+            else {
+                startNewRound(room.getCurrentRound() + 1, room);
+            }
+
+            room.setCurrentTurnPlayerId(null);
+            room.setCurrentTurnEndAt(0);
+        }
+        else {
+            room.setCurrentTurnPlayerId(newMember.getPlayer().getId());
+            room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
+
+            sendRoomWebsocket(room.getId(), new NewPlayerTurnWebsocketModel(newMember.getPlayer().getId(), room.getCurrentTurnEndAt(), timeoutPreviousPlayer));
+        }
 
         room.setCurrentTurnLastAction(null);
-        room.setCurrentTurnPlayerId(newMember.getPlayer().getId());
-        room.setCurrentTurnEndAt(System.currentTimeMillis() + TIME_PER_PLAYER);
 
         skyjoRepository.updateRoom(room.toDataModel());
-        sendRoomWebsocket(room.getId(), new NewPlayerTurnWebsocketModel(newMember.getPlayer().getId(), room.getCurrentTurnEndAt(), timeoutPreviousPlayer));
     }
 
     private void runRoomDaemon(UUID roomId) {
@@ -666,25 +751,7 @@ public class SkyjoService implements ISkyjoService {
                                 && room.getGameBeginAt() > 0
                                 && System.currentTimeMillis() >= room.getGameBeginAt()
                 ) {
-                    room.setStatus(ESkyjoRoomStatusBusinessModel.SELECTING_CARDS);
-                    room.setCurrentRound(0);
-                    room.setPristineCards(generateRandomDeck());
-
-                    // Cards distribution
-                    for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
-                        List<Integer> cards = room.getPristineCards().subList(0, 12);
-                        member.setRealBoard(new ArrayList<>(cards));
-                        cards.clear();
-
-                        skyjoRepository.updateRoomMember(member.toDataModel());
-                    }
-
-                    // Draw the first card
-                    Integer topCard = room.getPristineCards().remove(0);
-                    room.setLastDiscardedCard(topCard);
-
-                    sendRoomWebsocket(roomId, new SelectingCardsPhaseWebsocketModel());
-                    sendRoomWebsocket(roomId, new NewDiscardedCardWebsocketModel(room.getLastDiscardedCard()));
+                    startNewRound(0, room);
 
                     skyjoRepository.updateRoom(room.toDataModel());
                     logger.info("Skyjo started for room " + roomId);

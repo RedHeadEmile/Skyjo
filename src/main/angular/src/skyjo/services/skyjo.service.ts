@@ -14,7 +14,7 @@ import {lastValueFrom, Subject, Subscription} from "rxjs";
 import {WebsocketService} from "../../services/websocket.service";
 import {Router} from "@angular/router";
 
-export type LocalRoomServerMessageDiscriminator = 'gameCountdownStarted' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'selectingCardsPhase' | 'setPlayerCard' | 'setRoomOwner';
+export type LocalRoomServerMessageDiscriminator = 'gameCountdownStarted' | 'gameFinished' | 'gameInterrupted' | 'internalError' | 'newCurrentDrawnCard' | 'newDiscardedCard' | 'newPlayerTurn' | 'playerDisplayNameChanged' | 'playerJoined' | 'playerLeave' | 'roomNameChanged' | 'selectingCardsPhase' | 'setPlayerCard' | 'setPlayerScore' | 'setRoomOwner';
 export type GlobalRoomServerMessageDiscriminator = 'destroyRoom' | 'newRoom' | 'roomNameChanged';
 
 export type CardStatus = 'shown' | 'hidden' | 'deleted';
@@ -23,6 +23,8 @@ export type CardStatus = 'shown' | 'hidden' | 'deleted';
   providedIn: 'root'
 })
 export class SkyjoService {
+
+  private static readonly _UNKNOWN_SCORE = -100;
 
   private _timeoutSubject: Subject<string> = new Subject<string>(); // uuid of timed out player
 
@@ -190,6 +192,7 @@ export class SkyjoService {
 
     switch (message['discriminator'] as LocalRoomServerMessageDiscriminator) {
       case 'gameCountdownStarted': this._handleGameCountdownStartedMessage(message); break;
+      case 'gameFinished': this._handleGameFinishedMessage(message); break;
       case 'gameInterrupted': this._handleGameInterruptedMessage(message); break;
       case 'internalError': this._handleInternalErrorMessage(message); break;
       case 'newCurrentDrawnCard': this._handleNewCurrentDrawnCardMessage(message); break;
@@ -201,14 +204,22 @@ export class SkyjoService {
       case 'roomNameChanged': this._handleRoomNameChangedMessage(message); break;
       case 'selectingCardsPhase': this._handleSelectingCardsPhaseMessage(message); break;
       case 'setPlayerCard': this._handleSetPlayerCardMessage(message); break;
+      case 'setPlayerScore': this._handleSetPlayerScoreMessage(message); break;
       case 'setRoomOwner': this._handleSetRoomOwnerMessage(message); break;
       default: throw new Error('Unknown action: ' + message['discriminator']);
     }
+
+    if (!!this._currentRoom)
+      this._currentRoom = new SkyjoRoomViewModel(this._currentRoom);
   }
 
   //#region MessageHandlers
   private _handleGameCountdownStartedMessage(message: any) {
     this._currentRoom!.gameBeginAt = message['gameBeginAt'];
+  }
+
+  private _handleGameFinishedMessage(_: any) {
+    this._currentRoom!.status = SkyjoRoomViewModelStatus.FINISHED;
   }
 
   private _handleGameInterruptedMessage(_: any) {
@@ -271,8 +282,15 @@ export class SkyjoService {
     this._currentRoom!.ownerId = message['newOwnerId'];
   }
 
-  private _handleSelectingCardsPhaseMessage(_: any) {
+  private _handleSelectingCardsPhaseMessage(message: any) {
+    this._waitForNextTurn = false;
+    this._currentRoom!.currentRound = message['roundNumber'];
+    this._currentRoom!.currentTurnEndAt = 0;
+    this._currentRoom!.currentTurnPlayerId = undefined;
     this._currentRoom!.status = SkyjoRoomViewModelStatus.SELECTING_CARDS;
+    this._currentRoom!.members.forEach(member => {
+      member.board = [-10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10];
+    });
   }
 
   private _handleSetPlayerCardMessage(message: any) {
@@ -295,6 +313,25 @@ export class SkyjoService {
 
     if (this._currentPlayer?.id === playerId)
       this._waitForMyCardToFlip = false;
+  }
+
+  private _handleSetPlayerScoreMessage(message: any) {
+    const playerId = message['playerId'];
+    const round = message['round'];
+    const score = message['score'];
+
+    if (!this._currentRoom)
+      throw new Error('Not in a room');
+
+    const member = this._currentRoom.members.find(member => member.playerId === playerId);
+    if (!member)
+      throw new Error('Member not found');
+
+    while (member.scores.length < round)
+      member.scores.push(SkyjoService._UNKNOWN_SCORE);
+
+    member.scores.push(score);
+    member.scores = [...member.scores];
   }
   //#endregion
 

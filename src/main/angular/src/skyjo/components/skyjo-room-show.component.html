@@ -29,6 +29,7 @@
 <div class="other-members">
   <div *ngFor="let member of roomMembersWithoutMe">
     <span>{{ member.playerDisplayName }}</span>
+    <span>{{ getMemberScore(member) }}</span>
     <skyjo-board [cards]="member.board" />
   </div>
 </div>

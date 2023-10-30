@@ -6,7 +6,9 @@ import lombok.Setter;
 @Getter
 @Setter
 public class SelectingCardsPhaseWebsocketModel extends WebsocketModel {
-    public SelectingCardsPhaseWebsocketModel() {
+    private int roundNumber;
+    public SelectingCardsPhaseWebsocketModel(int roundNumber) {
         super("selectingCardsPhase");
+        this.roundNumber = roundNumber;
     }
 }

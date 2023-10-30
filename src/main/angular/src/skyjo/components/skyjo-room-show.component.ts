@@ -64,7 +64,7 @@ export class SkyjoRoomShowComponent implements OnInit, OnDestroy {
 
   //#region CurrentTurn
   get isItMyTurn(): boolean {
-    return this._gameService.currentRoom?.currentTurnPlayerId === this._gameService.currentPlayer?.id;
+    return this.isStatusTurnInProgress && this._gameService.currentRoom?.currentTurnPlayerId === this._gameService.currentPlayer?.id;
   }
 
   get currentTurnPlayerName(): string | undefined {
@@ -76,6 +76,13 @@ export class SkyjoRoomShowComponent implements OnInit, OnDestroy {
       return undefined;
 
     return Math.round(Math.max(0, this._gameService.currentRoom.currentTurnEndAt - this._now) / 1000);
+  }
+
+  getMemberScore(member: SkyjoRoomMemberViewModel): string {
+    if (member.scores.length === 0)
+      return '';
+
+    return member.scores.toString() + ' => ' + member.scores.reduce((a, b) => a + b, 0).toString();
   }
   //#endregion
 
