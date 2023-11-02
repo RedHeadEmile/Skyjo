@@ -687,6 +687,9 @@ public class SkyjoService implements ISkyjoService {
             Thread.sleep(5000);
 
             // Score calculation
+            Integer lowerScore = null;
+            Integer scoreOfPlayerWhoEndedTheRound = null;
+
             boolean gameIsOver = false;
             for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
                 int totalCardsValue = 0;
@@ -696,6 +699,12 @@ public class SkyjoService implements ISkyjoService {
 
                 if (totalCardsValue >= 100)
                     gameIsOver = true;
+
+                if (member.getPlayer().getId().equals(newMember.getPlayer().getId()))
+                    scoreOfPlayerWhoEndedTheRound = totalCardsValue;
+
+                if (lowerScore == null || totalCardsValue < lowerScore)
+                    lowerScore = totalCardsValue;
 
                 while (member.getScores().size() < room.getCurrentRound()) {
                     member.getScores().add(UNKNOWN_SCORE);
@@ -711,9 +720,37 @@ public class SkyjoService implements ISkyjoService {
                 skyjoRepository.updateRoomMember(member.toDataModel());
             }
 
+            // If the player who ended the round is not the one with the lower score, he gets double points
+            if (scoreOfPlayerWhoEndedTheRound == null)
+                throw new IllegalStateException("Player who ended the round is not in the room anymore");
+
+            if (scoreOfPlayerWhoEndedTheRound > lowerScore && scoreOfPlayerWhoEndedTheRound > 0) {
+                newMember.getScores().set(room.getCurrentRound(), scoreOfPlayerWhoEndedTheRound * 2);
+                sendRoomWebsocket(room.getId(), new SetPlayerScoreWebsocketModel(newMember.getPlayer().getId(), room.getCurrentRound(), scoreOfPlayerWhoEndedTheRound * 2));
+            }
+
             if (gameIsOver) {
+                UUID winnerId = null;
+                int lowerTotalScores = Integer.MAX_VALUE;
+
+                for (SkyjoRoomMemberBusinessModel member : room.getMembers()) {
+                    int totalScores = 0;
+                    for (Integer score : member.getScores())
+                        if (score != null && score.intValue() != UNKNOWN_SCORE.intValue())
+                            totalScores += score;
+
+                    if (winnerId == null || totalScores < lowerTotalScores) {
+                        lowerTotalScores = totalScores;
+                        winnerId = member.getPlayer().getId();
+                    }
+                }
+
+                if (winnerId == null)
+                    throw new IllegalStateException("No winner found");
+
                 room.setStatus(ESkyjoRoomStatusBusinessModel.FINISHED);
-                sendRoomWebsocket(room.getId(), new GameFinishedWebsocketModel(null));
+                room.setWinnerId(winnerId);
+                sendRoomWebsocket(room.getId(), new GameFinishedWebsocketModel(winnerId));
             }
             else {
                 startNewRound(room.getCurrentRound() + 1, room);

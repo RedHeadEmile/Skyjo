@@ -51,6 +51,14 @@ export class SkyjoRoomShowComponent implements OnInit, OnDestroy {
   get isStatusTurnInProgress(): boolean {
     return this._gameService.currentRoom?.status === SkyjoRoomViewModelStatus.TURN_IN_PROGRESS;
   }
+
+  get isStatusFinished(): boolean {
+    return this._gameService.currentRoom?.status === SkyjoRoomViewModelStatus.FINISHED;
+  }
+
+  get winnerName(): string | undefined {
+    return this._gameService.currentRoom?.members.find(member => member.playerId === this._gameService.currentRoom?.winnerId)?.playerDisplayName;
+  }
   //#endregion
 
   //#region Waiting for players phase

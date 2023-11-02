@@ -21,6 +21,7 @@ public class SkyjoRoomDataModel {
     private ESkyjoGameActionTypeDataModel currentTurnLastAction;
 
     private long gameBeginAt;
+    private UUID winnerId;
     private ESkyjoRoomStatusDataModel status = ESkyjoRoomStatusDataModel.WAITING_FOR_PLAYERS;
 
     private List<Integer> pristineCards = new ArrayList<>(150);

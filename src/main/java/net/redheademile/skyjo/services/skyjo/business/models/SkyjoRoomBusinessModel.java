@@ -22,6 +22,7 @@ public class SkyjoRoomBusinessModel {
     private ESkyjoGameActionTypeBusinessModel currentTurnLastAction;
 
     private long gameBeginAt;
+    private UUID winnerId;
     private ESkyjoRoomStatusBusinessModel status;
 
     private List<Integer> pristineCards = new ArrayList<>(150);
@@ -43,6 +44,7 @@ public class SkyjoRoomBusinessModel {
             setCurrentTurnLastAction(SkyjoRoomBusinessModel.this.getCurrentTurnLastAction() != null ? SkyjoRoomBusinessModel.this.getCurrentTurnLastAction().toDataModel() : null);
 
             setGameBeginAt(SkyjoRoomBusinessModel.this.getGameBeginAt());
+            setWinnerId(SkyjoRoomBusinessModel.this.getWinnerId());
             setStatus(SkyjoRoomBusinessModel.this.getStatus().toDataModel());
 
             setPristineCards(SkyjoRoomBusinessModel.this.getPristineCards());
@@ -64,6 +66,7 @@ public class SkyjoRoomBusinessModel {
             setCurrentTurnLastAction(dataModel.getCurrentTurnLastAction() != null ? ESkyjoGameActionTypeBusinessModel.fromDataModel(dataModel.getCurrentTurnLastAction()) : null);
 
             setGameBeginAt(dataModel.getGameBeginAt());
+            setWinnerId(dataModel.getWinnerId());
             setStatus(ESkyjoRoomStatusBusinessModel.fromDataModel(dataModel.getStatus()));
 
             setPristineCards(dataModel.getPristineCards());

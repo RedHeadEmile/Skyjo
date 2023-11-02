@@ -34,6 +34,7 @@ public class SkyjoRoomViewModel {
 
     @NotNull
     private long gameBeginAt;
+    private UUID winnerId;
     @NotNull
     private ESkyjoRoomStatusViewModel status;
 
@@ -55,6 +56,7 @@ public class SkyjoRoomViewModel {
             setCurrentTurnEndAt(businessModel.getCurrentTurnEndAt());
 
             setGameBeginAt(businessModel.getGameBeginAt());
+            setWinnerId(businessModel.getWinnerId());
             setStatus(ESkyjoRoomStatusViewModel.fromBusinessModel(businessModel.getStatus()));
 
             setCurrentDrawnCard(businessModel.getCurrentDrawnCard());

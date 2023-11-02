@@ -12,17 +12,21 @@
   </div>
 </div>
 
+<h1 *ngIf="isStatusWaitingForPlayers">
+  En attente des joueurs
+  <ng-container *ngIf="countdownBeforeStart">
+    , démarrage dans {{countdownBeforeStart}}s
+  </ng-container>
+</h1>
+
 <h1 *ngIf="isStatusSelectingCards">Vous devez retourner 2 cartes!</h1>
 
 <h1 *ngIf="isStatusTurnInProgress">
   Au tour de {{ currentTurnPlayerName }} ({{ currentTurnRemainingTime }}s)
 </h1>
 
-<h1 *ngIf="isStatusWaitingForPlayers">
-  En attente des joueurs
-  <ng-container *ngIf="countdownBeforeStart">
-    , démarrage dans {{countdownBeforeStart}}s
-  </ng-container>
+<h1 *ngIf="isStatusFinished">
+  Le gagnant est {{ winnerName }}!
 </h1>
 
 <span>Les autres joueurs:</span>
